@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    // 1. Ingest TMDB Core Details, Credits, Videos, Releases & External IDs (Includes wikidata_id)
     const tmdbRes = await fetch(
       `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${tmdbKey}&append_to_response=credits,videos,release_dates,external_ids`,
       { next: { revalidate: 3600 } }
@@ -27,6 +28,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: tmdb.status_message }, { status: 404 });
     }
 
+    const imdbId = tmdb.external_ids?.imdb_id || tmdb.imdb_id;
+    const wikidataId = tmdb.external_ids?.wikidata_id || null;
+
+    // Determine Certification
     let certification = "UA";
     const releaseResults = tmdb.release_dates?.results || [];
     const inRelease = releaseResults.find((r: any) => r.iso_3166_1 === "IN");
@@ -37,6 +42,7 @@ export async function GET(req: NextRequest) {
       if (match?.certification) certification = match.certification;
     }
 
+    // Credits
     const rawCrew = tmdb.credits?.crew || [];
     const directors = rawCrew
       .filter((c: any) => c.job === "Director")
@@ -50,11 +56,12 @@ export async function GET(req: NextRequest) {
       profile: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null,
     }));
 
+    // Trailer
     const videos = tmdb.videos?.results || [];
     const trailer = videos.find((v: any) => v.type === "Trailer" && v.site === "YouTube") || videos[0];
 
+    // 2. Ingest OMDb
     let omdbData: any = {};
-    const imdbId = tmdb.external_ids?.imdb_id || tmdb.imdb_id;
     if (omdbKey && imdbId) {
       try {
         const omdbRes = await fetch(`https://www.omdbapi.com/?apikey=${omdbKey}&i=${imdbId}`);
@@ -62,6 +69,7 @@ export async function GET(req: NextRequest) {
       } catch (_) {}
     }
 
+    // 3. Ingest Fanart.tv (ClearLogo)
     let clearlogo = "";
     let clearart = "";
     let banner = "";
@@ -88,15 +96,28 @@ export async function GET(req: NextRequest) {
       } catch (_) {}
     }
 
+    // 4. Wikidata Query Fallback (Facts & Wikipedia Summary)
     let plotSummary = tmdb.overview || "";
-    if ((!plotSummary || plotSummary.length < 100) && tmdb.title) {
+    let wikiExtract = "";
+
+    if (wikidataId) {
       try {
-        const wikiRes = await fetch(
-          `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(tmdb.title + " (film)")}`
-        );
-        if (wikiRes.ok) {
-          const wikiJson = await wikiRes.json();
-          if (wikiJson.extract) plotSummary = wikiJson.extract;
+        // Fetch direct structured claim from Wikidata Entity API
+        const wdRes = await fetch(`https://www.wikidata.org/wiki/Special:EntityData/${wikidataId}.json`);
+        if (wdRes.ok) {
+          const wdJson = await wdRes.json();
+          const entity = wdJson?.entities?.[wikidataId];
+          // Example: Wikipedia English sitelink extract
+          const enWikiTitle = entity?.sitelinks?.enwiki?.title;
+          if (enWikiTitle && (!plotSummary || plotSummary.length < 100)) {
+            const wikiRes = await fetch(
+              `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(enWikiTitle)}`
+            );
+            if (wikiRes.ok) {
+              const wData = await wikiRes.json();
+              if (wData.extract) plotSummary = wData.extract;
+            }
+          }
         }
       } catch (_) {}
     }
@@ -105,6 +126,7 @@ export async function GET(req: NextRequest) {
       id: String(tmdb.id),
       tmdb_id: tmdb.id,
       imdb_id: imdbId || null,
+      wikidata_id: wikidataId || null,
       title: tmdb.title,
       original_title: tmdb.original_title || tmdb.title,
       tagline: tmdb.tagline || "",
