@@ -1,334 +1,372 @@
-'use client';
-import { useState } from "react";
+"use client";
+import React, { useState } from "react";
 
-export default function MoinuFlixAdmin() {
+export default function MoinuFlixStudio() {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [commitStatus, setCommitStatus] = useState("");
 
-  const [primaryUrl, setPrimaryUrl] = useState("");
+  // Raw Filename for Auto-Parser
+  const [rawFilename, setRawFilename] = useState("");
+
+  // Video / Audio Specs State
+  const [specs, setSpecs] = useState({
+    edition: "Extended Collector's Edition",
+    resolution: "1080p",
+    enhancement: "DS4K",
+    colorDepth: "10bit",
+    hdr: "SDR",
+    codec: "x265 HEVC",
+    source: "BluRay",
+    audioCodec: "DDP 5.1",
+    audioBitrate: "448 Kbps",
+    languages: ["Hindi", "Tamil", "Telugu", "English"]
+  });
+
+  const [masterUrl, setMasterUrl] = useState("");
   const [versions, setVersions] = useState([
-    { language: "Tamil", quality: "1080p", source: "AMZN", format: "WEB-DL", codec: "x265", audio: "Dolby Atmos 5.1", channels: "5.1", drive_url: "" }
+    {
+      language: "Multi Audio (Hindi-Tamil-Telugu-Eng)",
+      quality: "1080p DS4K 10bit",
+      source: "BluRay",
+      audio: "DDP 5.1 @ 448Kbps",
+      stream_url: ""
+    }
   ]);
 
-  const searchMovie = async () => {
-    if (!query) return;
-    setLoading(true);
-    const res = await fetch("/api/fetch-meta", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query }),
-    });
-    const data = await res.json();
-    setSearchResults(data.results || []);
-    setLoading(false);
-  };
+  // SMART AUTO-PARSER ENGINE
+  const parseFilename = () => {
+    if (!rawFilename) return;
+    const fn = rawFilename.toLowerCase();
 
-  const selectMovie = async (tmdbId) => {
-    setLoading(true);
-    const res = await fetch("/api/fetch-meta", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tmdbId }),
-    });
-    const data = await res.json();
-    setSelectedMovie(data);
-    setLoading(false);
-  };
+    let res = "1080p";
+    if (fn.includes("2160p") || fn.includes("4k")) res = "2160p (4K)";
+    else if (fn.includes("720p")) res = "720p";
 
-  const addVersion = () => {
+    let enh = "Standard";
+    if (fn.includes("ds4k")) enh = "DS4K";
+    else if (fn.includes("remux")) enh = "Remux";
+    else if (fn.includes("imax")) enh = "IMAX Enhanced";
+
+    let col = fn.includes("10bit") ? "10bit" : "8bit";
+    let dyn = fn.includes("hdr") ? "HDR10" : fn.includes("dv") ? "Dolby Vision" : "SDR";
+    let cdc = fn.includes("hevc") || fn.includes("x265") ? "x265 HEVC" : "x264";
+    let src = fn.includes("bluray") || fn.includes("bd") ? "BluRay" : fn.includes("web") ? "WEB-DL" : "AMZN";
+
+    let aud = "DDP 5.1";
+    if (fn.includes("1509") || (fn.includes("dts") && fn.includes("1509k"))) aud = "DTS 5.1 (1509k)";
+    else if (fn.includes("atmos")) aud = "Dolby Atmos";
+    else if (fn.includes("truehd")) aud = "Dolby TrueHD";
+    else if (fn.includes("ddp") || fn.includes("eac3")) aud = "DDP 5.1";
+
+    let br = "Auto";
+    if (fn.includes("448kbps") || fn.includes("448")) br = "448 Kbps";
+    else if (fn.includes("640kbps") || fn.includes("640")) br = "640 Kbps";
+    else if (fn.includes("1509kbps") || fn.includes("1509")) br = "1509 Kbps";
+
+    let langs = [];
+    if (fn.includes("hindi")) langs.push("Hindi");
+    if (fn.includes("tamil")) langs.push("Tamil");
+    if (fn.includes("telugu")) langs.push("Telugu");
+    if (fn.includes("english") || fn.includes("eng")) langs.push("English");
+    if (langs.length === 0) langs = ["Tamil", "Hindi"];
+
+    setSpecs({
+      edition: fn.includes("extended") ? "Extended Collector's Edition" : "Standard",
+      resolution: res,
+      enhancement: enh,
+      colorDepth: col,
+      hdr: dyn,
+      codec: cdc,
+      source: src,
+      audioCodec: aud,
+      audioBitrate: br,
+      languages: langs
+    });
+
     setVersions([
-      ...versions,
-      { language: "Hindi", quality: "1080p", source: "NF", format: "WEB-DL", codec: "x265", audio: "Dolby Atmos 5.1", channels: "5.1", drive_url: "" }
+      {
+        language: langs.join("-"),
+        quality: `${res} ${enh} ${col}`,
+        source: src,
+        audio: `${aud} ~ ${br}`,
+        stream_url: masterUrl
+      }
     ]);
   };
 
-  const updateVersion = (index, field, value) => {
-    const updated = [...versions];
-    updated[index][field] = value;
-    setVersions(updated);
+  // Search Movie
+  const searchMovies = async () => {
+    if (!query) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/search-tmdb?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      setSearchResults(data.results || []);
+    } catch (e) {
+      alert("Error searching movie");
+    }
+    setLoading(false);
   };
 
-  const removeVersion = (index) => {
-    setVersions(versions.filter((_, i) => i !== index));
+  const selectMovie = async (item) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/fetch-meta?id=${item.id}`);
+      const data = await res.json();
+      setSelectedMovie(data);
+    } catch (e) {
+      alert("Error loading metadata");
+    }
+    setLoading(false);
   };
 
-  const saveToGithub = async () => {
-    if (!primaryUrl) {
-      alert("Primary Google Drive link daalna zaroori hai!");
+  const handleCommit = async () => {
+    if (!selectedMovie) {
+      alert("Pehle movie select karein!");
       return;
     }
-    setLoading(true);
-    const res = await fetch("/api/save-movie", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        movieDetail: selectedMovie,
-        versions,
-        primaryDriveUrl: primaryUrl,
-      }),
-    });
-    const data = await res.json();
-    setLoading(false);
-    if (data.success) {
-      alert("Successfully Added to " + data.chunk + " & catalog.json!");
-      setSelectedMovie(null);
-      setSearchResults([]);
-      setPrimaryUrl("");
-    } else {
-      alert("Error: " + data.error);
+    setCommitStatus("Committing to GitHub My-Movies...");
+    try {
+      const res = await fetch("/api/save-movie", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          movie: selectedMovie,
+          specs: specs,
+          masterUrl: masterUrl,
+          versions: versions
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCommitStatus("🎉 Successfully Synced to GitHub & Kodi Live!");
+      } else {
+        setCommitStatus("Failed: " + data.error);
+      }
+    } catch (e) {
+      setCommitStatus("Error syncing: " + e.message);
     }
   };
 
-  // Dynamic tags from versions
-  const activeTags = Array.from(new Set([
-    ...versions.map(v => v.quality),
-    ...versions.map(v => v.source),
-    ...versions.map(v => v.codec || "x265"),
-    ...versions.map(v => v.audio.includes("Atmos") ? "Atmos" : "5.1 Surround"),
-    "5.1 Passthrough"
-  ]));
-
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#08090c", color: "#f3f4f6", padding: "24px", fontFamily: "system-ui, sans-serif" }}>
-      <header style={{ maxWidth: "1350px", margin: "0 auto 24px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #1f242d", paddingBottom: "16px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <div style={{ background: "linear-gradient(135deg, #e50914, #b20710)", padding: "8px 14px", borderRadius: "8px", fontWeight: "900", letterSpacing: "1px", fontSize: "18px", boxShadow: "0 0 15px rgba(229,9,20,0.4)" }}>
-            MOINUFLIX
-          </div>
-          <div>
-            <h1 style={{ fontSize: "18px", fontWeight: "700", margin: 0, color: "#fff" }}>Movie Indexer & Metadata Studio</h1>
-            <p style={{ fontSize: "12px", color: "#6b7280", margin: 0 }}>Automated 2-Tier JSON Pipeline (TMDb + OMDb + Fanart + Wiki)</p>
-          </div>
+    <div className="min-h-screen bg-[#070b14] text-white p-4 md:p-8 font-sans">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-gray-800 pb-4 mb-6">
+        <div className="flex items-center gap-3">
+          <span className="bg-red-600 font-black px-3 py-1 rounded text-lg">MOINUFLIX</span>
+          <span className="text-sm font-semibold tracking-wide text-gray-300">CINEMA STUDIO MANAGER</span>
         </div>
-        <div style={{ background: "rgba(56,189,248,0.1)", border: "1px solid rgba(56,189,248,0.3)", padding: "6px 14px", borderRadius: "20px", color: "#38bdf8", fontSize: "12px", fontWeight: "600" }}>
-          5.1 Cinema Passthrough Mode
-        </div>
-      </header>
+        <span className="text-xs bg-cyan-950 text-cyan-400 border border-cyan-800 px-3 py-1 rounded-full">
+          ⚡ 5.1 Surround & Remux Mode
+        </span>
+      </div>
 
-      <main style={{ maxWidth: "1350px", margin: "0 auto", display: "grid", gridTemplateColumns: "360px 1fr", gap: "24px" }}>
-        
-        {/* Left Side: Step 1 & 2 */}
-        <section style={{ background: "#0e1117", border: "1px solid #1a1f29", borderRadius: "16px", padding: "20px", height: "fit-content" }}>
-          <span style={{ fontSize: "11px", fontWeight: "700", color: "#e50914", letterSpacing: "1.5px", textTransform: "uppercase" }}>Step 1 & 2</span>
-          <h2 style={{ fontSize: "16px", fontWeight: "700", margin: "4px 0 14px" }}>Search Movie</h2>
-          
-          <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
-            <input
-              type="text"
-              placeholder="Type movie name (e.g. Leo)..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && searchMovie()}
-              style={{ flex: 1, background: "#161b24", border: "1px solid #262e3d", borderRadius: "8px", padding: "10px 14px", color: "#fff", fontSize: "13px", outline: "none" }}
-            />
-            <button
-              onClick={searchMovie}
-              disabled={loading}
-              style={{ background: "#e50914", color: "#fff", border: "none", borderRadius: "8px", padding: "0 18px", fontWeight: "600", fontSize: "13px", cursor: "pointer" }}
-            >
-              {loading ? "..." : "Find"}
-            </button>
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Column: Search & Raw Parser */}
+        <div className="lg:col-span-5 space-y-6">
+          {/* Step 1: TMDB Search */}
+          <div className="bg-[#0f172a] border border-gray-800 p-4 rounded-xl">
+            <h2 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-2">Step 1 & 2: Search Title</h2>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Type movie name (e.g. Avatar)..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full bg-[#1e293b] border border-gray-700 px-3 py-2 rounded text-sm outline-none focus:border-red-500"
+              />
+              <button onClick={searchMovies} className="bg-red-600 hover:bg-red-700 font-bold px-4 py-2 rounded text-sm">
+                Find
+              </button>
+            </div>
 
-          <div style={{ maxHeight: "620px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px" }}>
-            {searchResults.map((m) => (
-              <div
-                key={m.id}
-                onClick={() => selectMovie(m.id)}
-                style={{ display: "flex", gap: "12px", padding: "10px", background: "#141822", border: "1px solid #1f2636", borderRadius: "10px", cursor: "pointer" }}
-              >
-                <img
-                  src={m.poster_path ? "https://image.tmdb.org/t/p/w92" + m.poster_path : "https://via.placeholder.com/92x138?text=No+Poster"}
-                  style={{ width: "42px", height: "60px", objectFit: "cover", borderRadius: "6px" }}
-                  alt=""
-                />
-                <div style={{ overflow: "hidden" }}>
-                  <div style={{ fontWeight: "600", fontSize: "14px", color: "#f3f4f6", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.title}</div>
-                  <div style={{ fontSize: "12px", color: "#8a94a6", marginTop: "4px" }}>
-                    {m.release_date?.split("-")[0] || "N/A"} • ★ {m.vote_average?.toFixed(1) || "NR"}
+            {/* Results */}
+            {searchResults.length > 0 && (
+              <div className="mt-3 max-h-52 overflow-y-auto space-y-2 pr-1">
+                {searchResults.map((m) => (
+                  <div
+                    key={m.id}
+                    onClick={() => selectMovie(m)}
+                    className="flex items-center gap-3 bg-[#1e293b] hover:bg-gray-800 p-2 rounded cursor-pointer border border-transparent hover:border-red-500"
+                  >
+                    <img src={`https://image.tmdb.org/t/p/w92${m.poster_path}`} className="w-10 h-14 object-cover rounded" />
+                    <div>
+                      <div className="font-bold text-sm">{m.title}</div>
+                      <div className="text-xs text-gray-400">{m.release_date ? m.release_date.split("-")[0] : ""}</div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
-            {searchResults.length === 0 && (
-              <div style={{ textAlign: "center", color: "#4b5563", fontSize: "13px", padding: "40px 0" }}>
-                Search movie title to see list
+                ))}
               </div>
             )}
           </div>
-        </section>
 
-        {/* Right Side: Step 3 to 8 */}
-        <section style={{ background: "#0e1117", border: "1px solid #1a1f29", borderRadius: "16px", padding: "24px" }}>
-          {!selectedMovie ? (
-            <div style={{ height: "450px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#4b5563" }}>
-              <div style={{ fontSize: "36px", marginBottom: "12px" }}>🎬</div>
-              <div style={{ fontSize: "16px", fontWeight: "600" }}>No Movie Selected</div>
-              <div style={{ fontSize: "13px", marginTop: "4px" }}>Search on left & click on movie to auto-populate metadata</div>
+          {/* Step 3: Raw Filename Parser (Auto-Fill Feature) */}
+          <div className="bg-[#0f172a] border border-cyan-900/60 p-4 rounded-xl">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xs font-bold text-cyan-400 uppercase tracking-widest">⚡ Raw File Rename Parser (Auto-Fill)</h2>
+            </div>
+            <textarea
+              rows={3}
+              placeholder="Paste raw file name here (e.g. Avatar (2009) Extended 1080p DS4K 10bit BluRay x265 DDP 5.1 ~ 448Kbps...)"
+              value={rawFilename}
+              onChange={(e) => setRawFilename(e.target.value)}
+              className="w-full bg-[#1e293b] border border-gray-700 p-2 rounded text-xs outline-none focus:border-cyan-500 font-mono"
+            />
+            <button
+              onClick={parseFilename}
+              className="mt-2 w-full bg-cyan-600 hover:bg-cyan-500 font-bold py-2 rounded text-xs tracking-wider uppercase text-black"
+            >
+              Parse Specs & Auto-Fill Everything
+            </button>
+          </div>
+        </div>
+
+        {/* Right Column: Metadata & Live Specs Matrix */}
+        <div className="lg:col-span-7 space-y-6">
+          {selectedMovie ? (
+            <div className="bg-[#0f172a] border border-gray-800 p-5 rounded-xl space-y-4">
+              {/* Movie Header Card */}
+              <div className="flex gap-4 items-start">
+                <img src={selectedMovie.poster} className="w-24 h-36 object-cover rounded-lg border border-gray-700 shadow-md" />
+                <div className="space-y-1">
+                  <h1 className="text-xl font-black text-white">{selectedMovie.title}</h1>
+                  <div className="flex flex-wrap gap-2 text-xs text-gray-400">
+                    <span className="bg-red-950 text-red-400 px-2 py-0.5 rounded font-bold border border-red-800">
+                      {selectedMovie.certification || "UA"}
+                    </span>
+                    <span>{selectedMovie.year}</span>
+                    <span>• {selectedMovie.runtime} min</span>
+                    <span>• {selectedMovie.genres?.join(", ")}</span>
+                  </div>
+                  <p className="text-xs text-gray-300 line-clamp-3 leading-relaxed mt-2">{selectedMovie.plot}</p>
+                </div>
+              </div>
+
+              {/* Badges Preview */}
+              <div className="flex flex-wrap gap-2 border-t border-b border-gray-800 py-3">
+                <span className="bg-blue-950 text-blue-400 border border-blue-800 px-2 py-1 rounded text-xs font-semibold">
+                  {specs.resolution}
+                </span>
+                <span className="bg-yellow-950 text-yellow-400 border border-yellow-800 px-2 py-1 rounded text-xs font-semibold">
+                  {specs.enhancement}
+                </span>
+                <span className="bg-purple-950 text-purple-400 border border-purple-800 px-2 py-1 rounded text-xs font-semibold">
+                  {specs.colorDepth}
+                </span>
+                <span className="bg-indigo-950 text-indigo-400 border border-indigo-800 px-2 py-1 rounded text-xs font-semibold">
+                  {specs.hdr}
+                </span>
+                <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-1 rounded text-xs font-semibold">
+                  {specs.codec}
+                </span>
+                <span className="bg-orange-950 text-orange-400 border border-orange-800 px-2 py-1 rounded text-xs font-semibold">
+                  {specs.audioCodec} @ {specs.audioBitrate}
+                </span>
+              </div>
+
+              {/* Master Stream Link */}
+              <div>
+                <label className="text-xs font-bold text-gray-400 block mb-1">Primary Google Drive Master Link</label>
+                <input
+                  type="text"
+                  placeholder="https://drive.google.com/file/d/..."
+                  value={masterUrl}
+                  onChange={(e) => {
+                    setMasterUrl(e.target.value);
+                    if (versions[0]) {
+                      const updated = [...versions];
+                      updated[0].stream_url = e.target.value;
+                      setVersions(updated);
+                    }
+                  }}
+                  className="w-full bg-[#1e293b] border border-gray-700 px-3 py-2 rounded text-xs text-cyan-300 outline-none focus:border-red-500 font-mono"
+                />
+              </div>
+
+              {/* Versions Form Dropdowns */}
+              <div className="space-y-3 bg-[#0a0f1d] p-3 rounded-lg border border-gray-800">
+                <div className="text-xs font-bold text-gray-400">Stream Specs Configuration</div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div>
+                    <label className="text-[10px] text-gray-500">Resolution</label>
+                    <select
+                      value={specs.resolution}
+                      onChange={(e) => setSpecs({ ...specs, resolution: e.target.value })}
+                      className="w-full bg-[#1e293b] border border-gray-700 p-1.5 rounded text-xs text-white"
+                    >
+                      <option>2160p (4K)</option>
+                      <option>1080p</option>
+                      <option>720p</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500">Quality / Bit</label>
+                    <select
+                      value={specs.enhancement}
+                      onChange={(e) => setSpecs({ ...specs, enhancement: e.target.value })}
+                      className="w-full bg-[#1e293b] border border-gray-700 p-1.5 rounded text-xs text-white"
+                    >
+                      <option>DS4K</option>
+                      <option>Remux</option>
+                      <option>BluRay Pure</option>
+                      <option>IMAX Enhanced</option>
+                      <option>WEB-DL</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500">Color Depth</label>
+                    <select
+                      value={specs.colorDepth}
+                      onChange={(e) => setSpecs({ ...specs, colorDepth: e.target.value })}
+                      className="w-full bg-[#1e293b] border border-gray-700 p-1.5 rounded text-xs text-white"
+                    >
+                      <option>10bit</option>
+                      <option>8bit</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500">Audio Bitrate</label>
+                    <select
+                      value={specs.audioBitrate}
+                      onChange={(e) => setSpecs({ ...specs, audioBitrate: e.target.value })}
+                      className="w-full bg-[#1e293b] border border-gray-700 p-1.5 rounded text-xs text-white"
+                    >
+                      <option>448 Kbps</option>
+                      <option>640 Kbps</option>
+                      <option>1509 Kbps</option>
+                      <option>Lossless TrueHD</option>
+                      <option>384 Kbps</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Commit Button */}
+              <button
+                onClick={handleCommit}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-black font-extrabold py-3 rounded-lg text-sm tracking-wider uppercase transition-all shadow-lg"
+              >
+                Save to JSON & Commit to GitHub (Step 8)
+              </button>
+
+              {commitStatus && (
+                <div className="p-3 bg-gray-900 border border-gray-700 rounded text-center text-xs font-semibold text-yellow-400">
+                  {commitStatus}
+                </div>
+              )}
             </div>
           ) : (
-            <div>
-              {/* Banner Preview */}
-              <div style={{ display: "flex", gap: "20px", background: "#141822", border: "1px solid #202738", borderRadius: "12px", padding: "16px", position: "relative", overflow: "hidden" }}>
-                {selectedMovie.artwork?.fanart && (
-                  <img
-                    src={selectedMovie.artwork.fanart}
-                    style={{ position: "absolute", right: 0, top: 0, height: "100%", width: "60%", objectFit: "cover", opacity: 0.15, maskImage: "linear-gradient(to right, transparent, black)" }}
-                    alt=""
-                  />
-                )}
-                <img
-                  src={selectedMovie.artwork?.poster || "https://via.placeholder.com/150x225"}
-                  style={{ width: "95px", height: "140px", objectFit: "cover", borderRadius: "8px", boxShadow: "0 8px 16px rgba(0,0,0,0.5)", zIndex: 1 }}
-                  alt=""
-                />
-                <div style={{ flex: 1, zIndex: 1 }}>
-                  {selectedMovie.artwork?.clearlogo ? (
-                    <img src={selectedMovie.artwork.clearlogo} style={{ height: "42px", objectFit: "contain", marginBottom: "8px" }} alt="Logo" />
-                  ) : (
-                    <h2 style={{ fontSize: "22px", fontWeight: "800", margin: "0 0 6px" }}>{selectedMovie.title}</h2>
-                  )}
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", fontSize: "12px", color: "#9ca3af", marginBottom: "8px" }}>
-                    <span style={{ background: "#e50914", color: "#fff", padding: "2px 8px", borderRadius: "4px", fontWeight: "700" }}>{selectedMovie.certification || "UA"}</span>
-                    <span>{selectedMovie.year}</span>
-                    <span>•</span>
-                    <span>{selectedMovie.runtime} min</span>
-                    <span>•</span>
-                    <span style={{ color: "#38bdf8" }}>{selectedMovie.genres?.join(", ")}</span>
-                  </div>
-                  <p style={{ fontSize: "12px", color: "#d1d5db", lineHeight: 1.5, margin: 0, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                    {selectedMovie.plot}
-                  </p>
-                </div>
-              </div>
-
-              {/* Dynamic Tags */}
-              <div style={{ marginTop: "16px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                {activeTags.map((tag) => (
-                  <span key={tag} style={{ background: "#18202f", border: "1px solid #27344c", color: "#60a5fa", fontSize: "11px", fontWeight: "600", padding: "3px 10px", borderRadius: "6px" }}>
-                    {tag}
-                  </span>
-                ))}
-              </div>
-
-              {/* Versions & Drive */}
-              <div style={{ marginTop: "24px", borderTop: "1px solid #1f242d", paddingTop: "20px" }}>
-                <span style={{ fontSize: "11px", fontWeight: "700", color: "#e50914", letterSpacing: "1.5px", textTransform: "uppercase" }}>Step 7</span>
-                <h3 style={{ fontSize: "16px", fontWeight: "700", margin: "4px 0 16px" }}>Playback Versions & Google Drive URLs</h3>
-
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{ display: "block", fontSize: "12px", color: "#9ca3af", marginBottom: "6px" }}>Primary Google Drive URL (Master Stream):</label>
-                  <input
-                    type="text"
-                    placeholder="https://drive.google.com/file/d/1kNRa26pDssehRE..."
-                    value={primaryUrl}
-                    onChange={(e) => setPrimaryUrl(e.target.value)}
-                    style={{ width: "100%", background: "#161b24", border: "1px solid #262e3d", borderRadius: "8px", padding: "10px 14px", color: "#fff", fontSize: "13px", boxSizing: "border-box" }}
-                  />
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                  {versions.map((v, i) => (
-                    <div key={i} style={{ display: "grid", gridTemplateColumns: "110px 120px 100px 140px 1fr 36px", gap: "8px", background: "#121620", border: "1px solid #1c2333", padding: "10px", borderRadius: "8px", alignItems: "center" }}>
-                      
-                      {/* Language */}
-                      <select
-                        value={v.language}
-                        onChange={(e) => updateVersion(i, "language", e.target.value)}
-                        style={{ background: "#1a2130", border: "1px solid #2a354d", borderRadius: "6px", padding: "7px 8px", color: "#fff", fontSize: "12px", outline: "none" }}
-                      >
-                        <option value="Tamil">Tamil</option>
-                        <option value="Hindi">Hindi</option>
-                        <option value="Telugu">Telugu</option>
-                        <option value="Malayalam">Malayalam</option>
-                        <option value="Kannada">Kannada</option>
-                        <option value="English">English</option>
-                      </select>
-
-                      {/* Quality (Width Adjusted) */}
-                      <select
-                        value={v.quality}
-                        onChange={(e) => updateVersion(i, "quality", e.target.value)}
-                        style={{ background: "#1a2130", border: "1px solid #2a354d", borderRadius: "6px", padding: "7px 8px", color: "#38bdf8", fontWeight: "600", fontSize: "12px", outline: "none" }}
-                      >
-                        <option value="2160p">2160p (4K)</option>
-                        <option value="1080p">1080p (FHD)</option>
-                        <option value="720p">720p (HD)</option>
-                        <option value="480p">480p (SD)</option>
-                      </select>
-
-                      {/* Source */}
-                      <select
-                        value={v.source}
-                        onChange={(e) => updateVersion(i, "source", e.target.value)}
-                        style={{ background: "#1a2130", border: "1px solid #2a354d", borderRadius: "6px", padding: "7px 8px", color: "#fbbf24", fontWeight: "600", fontSize: "12px", outline: "none" }}
-                      >
-                        <option value="AMZN">AMZN</option>
-                        <option value="NF">Netflix</option>
-                        <option value="DSNP">Hotstar</option>
-                        <option value="ZEE5">ZEE5</option>
-                        <option value="SONYL">SonyLIV</option>
-                        <option value="BluRay">BluRay</option>
-                        <option value="WEB-DL">WEB-DL</option>
-                        <option value="Remux">Remux</option>
-                      </select>
-
-                      {/* Audio */}
-                      <select
-                        value={v.audio}
-                        onChange={(e) => updateVersion(i, "audio", e.target.value)}
-                        style={{ background: "#1a2130", border: "1px solid #2a354d", borderRadius: "6px", padding: "7px 8px", color: "#34d399", fontSize: "12px", outline: "none" }}
-                      >
-                        <option value="Dolby Atmos 5.1">Dolby Atmos 5.1</option>
-                        <option value="TrueHD 7.1 Atmos">TrueHD 7.1 Atmos</option>
-                        <option value="DD+ 5.1">DD+ 5.1</option>
-                        <option value="DD 5.1">DD 5.1</option>
-                        <option value="Stereo 2.0">Stereo 2.0</option>
-                      </select>
-
-                      {/* Drive URL */}
-                      <input
-                        type="text"
-                        value={v.drive_url}
-                        onChange={(e) => updateVersion(i, "drive_url", e.target.value)}
-                        placeholder="Google Drive link for this version"
-                        style={{ background: "#1a2130", border: "1px solid #2a354d", borderRadius: "6px", padding: "7px 10px", color: "#fff", fontSize: "12px", outline: "none" }}
-                      />
-
-                      <button
-                        onClick={() => removeVersion(i)}
-                        style={{ background: "transparent", color: "#ef4444", border: "none", cursor: "pointer", fontSize: "16px" }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-
-                  <button
-                    onClick={addVersion}
-                    style={{ alignSelf: "flex-start", background: "#1c2333", border: "1px dashed #34425e", color: "#38bdf8", padding: "7px 16px", borderRadius: "6px", fontSize: "12px", cursor: "pointer", marginTop: "6px", fontWeight: "600" }}
-                  >
-                    + Add Another Version
-                  </button>
-                </div>
-              </div>
-
-              {/* Step 8 Push to Repo */}
-              <div style={{ marginTop: "24px", borderTop: "1px solid #1f242d", paddingTop: "20px" }}>
-                <button
-                  onClick={saveToGithub}
-                  disabled={loading}
-                  style={{ width: "100%", background: "linear-gradient(135deg, #10b981, #059669)", color: "#fff", border: "none", borderRadius: "10px", padding: "14px", fontSize: "15px", fontWeight: "700", cursor: "pointer", boxShadow: "0 4px 15px rgba(16,185,129,0.3)" }}
-                >
-                  {loading ? "Syncing with GitHub..." : "Save to JSON & Commit to GitHub (Step 8)"}
-                </button>
-              </div>
+            <div className="bg-[#0f172a] border border-gray-800 p-12 rounded-xl text-center text-gray-500">
+              <div className="text-4xl mb-2">🎬</div>
+              <div className="text-sm font-semibold">No Movie Selected</div>
+              <div className="text-xs text-gray-600 mt-1">Search on left or paste raw file name to auto-populate metadata</div>
             </div>
           )}
-        </section>
-      </main>
+        </div>
+      </div>
     </div>
   );
 }
