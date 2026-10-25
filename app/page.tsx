@@ -1,6 +1,19 @@
 "use client";
 import React, { useState, useEffect } from "react";
 
+const CATEGORIES = [
+  "Hollywood (English)",
+  "Bollywood (Hindi)",
+  "Kollywood (Tamil)",
+  "Tollywood (Telugu)",
+  "Mollywood (Malayalam)",
+  "Sandalwood (Kannada)",
+  "Animation / Kids",
+  "World Cinema"
+];
+
+const ALL_LANGUAGES = ["English", "Hindi", "Tamil", "Telugu", "Malayalam", "Kannada"];
+
 export default function MoinuFlixCinemaStudio() {
   const [activeTab, setActiveTab] = useState<"editor" | "library" | "json">("editor");
 
@@ -15,6 +28,10 @@ export default function MoinuFlixCinemaStudio() {
   const [movie, setMovie] = useState<any>(null);
   const [rawFilename, setRawFilename] = useState("");
 
+  // Category State
+  const [category, setCategory] = useState("Hollywood (English)");
+  const [selectedLangs, setSelectedLangs] = useState<string[]>(["English"]);
+
   // Master Specs
   const [specs, setSpecs] = useState({
     resolution: "1080p",
@@ -27,15 +44,14 @@ export default function MoinuFlixCinemaStudio() {
     audioBitrate: "448 Kbps",
     channels: "5.1",
     fileSize: "5 GB",
-    dubbedText: "Org BD Multi Audio",
   });
 
   // Playback Versions
   const [versions, setVersions] = useState<any[]>([
     {
       id: "ver-1",
-      language: "Hindi",
-      dubbed: "Hindi Dub",
+      language: "English",
+      dubbed: "Original Audio",
       quality: "1080p",
       source: "BluRay",
       codec: "x265",
@@ -61,6 +77,27 @@ export default function MoinuFlixCinemaStudio() {
     setLoadingLibrary(false);
   };
 
+  // Determine Category Automatically based on TMDB Language
+  const detectCategory = (lang: string) => {
+    switch (lang) {
+      case "en":
+        return "Hollywood (English)";
+      case "hi":
+        return "Bollywood (Hindi)";
+      case "ta":
+        return "Kollywood (Tamil)";
+      case "te":
+        return "Tollywood (Telugu)";
+      case "ml":
+        return "Mollywood (Malayalam)";
+      case "kn":
+        return "Sandalwood (Kannada)";
+      default:
+        return "Hollywood (English)";
+    }
+  };
+
+  // ADVANCED PARSER WITH INDEPENDENT AUDIO SPECS PER LANGUAGE
   const parseFilename = () => {
     if (!rawFilename) return;
     const fn = rawFilename.toLowerCase();
@@ -93,33 +130,21 @@ export default function MoinuFlixCinemaStudio() {
     if (fn.includes("x264") || fn.includes("h.264") || fn.includes("avc")) cdc = "x264";
     else if (fn.includes("x265") || fn.includes("hevc")) cdc = "x265";
 
-    let aud = "Dolby Atmos";
-    if (fn.includes("truehd")) aud = "Dolby TrueHD";
-    else if (fn.includes("atmos")) aud = "Dolby Atmos";
-    else if (fn.includes("dts-hd")) aud = "DTS-HD MA";
-    else if (fn.includes("dts")) aud = "DTS 5.1";
-    else if (fn.includes("ddp") || fn.includes("eac3")) aud = "Dolby Digital Plus";
-    else if (fn.includes("ac3") || fn.includes("dd 5.1")) aud = "Dolby Digital";
-    else if (fn.includes("aac")) aud = "AAC";
-
-    let br = "448 Kbps";
-    if (fn.includes("448kbps") || fn.includes("448k")) br = "448 Kbps";
-    else if (fn.includes("640kbps") || fn.includes("640k")) br = "640 Kbps";
-    else if (fn.includes("1509kbps") || fn.includes("1509k")) br = "1509 Kbps";
-
     let sz = specs.fileSize;
     const sizeMatch = rawFilename.match(/(\d+(\.\d+)?)\s*(gb|mb)/i);
     if (sizeMatch) sz = `${sizeMatch[1]} ${sizeMatch[3].toUpperCase()}`;
 
-    const detectedLangs: string[] = [];
-    if (fn.includes("hindi")) detectedLangs.push("Hindi");
-    if (fn.includes("tamil")) detectedLangs.push("Tamil");
-    if (fn.includes("telugu")) detectedLangs.push("Telugu");
-    if (fn.includes("malayalam")) detectedLangs.push("Malayalam");
-    if (fn.includes("kannada")) detectedLangs.push("Kannada");
-    if (fn.includes("english") || fn.includes("eng")) detectedLangs.push("English");
+    // Detect Languages Present
+    const detected: string[] = [];
+    if (fn.includes("english") || fn.includes("eng")) detected.push("English");
+    if (fn.includes("hindi")) detected.push("Hindi");
+    if (fn.includes("tamil")) detected.push("Tamil");
+    if (fn.includes("telugu")) detected.push("Telugu");
+    if (fn.includes("malayalam")) detected.push("Malayalam");
+    if (fn.includes("kannada")) detected.push("Kannada");
 
-    const activeLangs = detectedLangs.length > 0 ? detectedLangs : ["Hindi"];
+    const finalLangs = detected.length > 0 ? detected : (movie?.original_language === "en" ? ["English"] : ["Hindi"]);
+    setSelectedLangs(finalLangs);
 
     setSpecs({
       resolution: res,
@@ -128,27 +153,50 @@ export default function MoinuFlixCinemaStudio() {
       colorDepth: col,
       hdr: hdr,
       codec: cdc,
-      audioCodec: aud,
-      audioBitrate: br,
-      channels: aud.includes("7.1") ? "7.1" : "5.1",
+      audioCodec: "Dolby Atmos",
+      audioBitrate: "448 Kbps",
+      channels: "5.1",
       fileSize: sz,
-      dubbedText: activeLangs.length > 1 ? `Multi Audio [${activeLangs.join("-")}]` : `${activeLangs[0]} Audio`,
     });
 
     const masterStream = versions[0]?.stream_url || "";
-    const newVersions = activeLangs.map((lang, idx) => ({
-      id: `ver-${idx + 1}`,
-      language: lang,
-      dubbed: `${lang} Dub [${aud}]`,
-      quality: res,
-      source: src,
-      codec: cdc,
-      audio: aud,
-      channels: "5.1",
-      size: sz,
-      linkType: masterStream.includes("dropbox") ? "direct_strm" : "gdrive",
-      stream_url: masterStream,
-    }));
+    
+    // BUILD CLEAN INDEPENDENT VERSIONS FOR EACH LANGUAGE
+    const newVersions = finalLangs.map((lang, idx) => {
+      let verAudio = "Dolby Digital";
+      let verChannels = "5.1";
+      let verDub = "";
+
+      const origLangName = movie?.original_language === "en" ? "English" : movie?.original_language === "ta" ? "Tamil" : "Hindi";
+
+      if (lang === origLangName) {
+        verDub = "Original Track";
+        if (fn.includes("dts-hd") || fn.includes("dtshd")) { verAudio = "DTS-HD MA"; verChannels = "7.1"; }
+        else if (fn.includes("truehd")) { verAudio = "Dolby TrueHD"; verChannels = "7.1"; }
+        else if (fn.includes("atmos")) { verAudio = "Dolby Atmos"; verChannels = "7.1"; }
+        else if (fn.includes("aac")) { verAudio = "AAC"; verChannels = "5.1"; }
+      } else {
+        verDub = `${lang} Dub`;
+        if (fn.includes("ddp") || fn.includes("dd 5.1") || fn.includes("eac3")) { verAudio = "Dolby Digital Plus"; verChannels = "5.1"; }
+        else if (fn.includes("aac")) { verAudio = "AAC"; verChannels = "5.1"; }
+        else { verAudio = "Dolby Digital"; verChannels = "5.1"; }
+      }
+
+      return {
+        id: `ver-${idx + 1}`,
+        language: lang,
+        dubbed: verDub,
+        quality: res,
+        source: src,
+        codec: cdc,
+        audio: verAudio,
+        channels: verChannels,
+        size: sz,
+        linkType: masterStream.includes("dropbox") ? "direct_strm" : "gdrive",
+        stream_url: masterStream,
+      };
+    });
+
     setVersions(newVersions);
   };
 
@@ -173,11 +221,22 @@ export default function MoinuFlixCinemaStudio() {
       const res = await fetch(`/api/fetch-meta?id=${tmdbId}`);
       const data = await res.json();
       setMovie(data);
+      const cat = detectCategory(data.original_language);
+      setCategory(cat);
       if (rawFilename) parseFilename();
     } catch (err: any) {
       alert("Metadata load failed: " + err.message);
     }
     setLoading(false);
+  };
+
+  const toggleLanguage = (lang: string) => {
+    if (selectedLangs.includes(lang)) {
+      if (selectedLangs.length === 1) return;
+      setSelectedLangs(selectedLangs.filter((l) => l !== lang));
+    } else {
+      setSelectedLangs([...selectedLangs, lang]);
+    }
   };
 
   const addVersionRow = () => {
@@ -190,8 +249,8 @@ export default function MoinuFlixCinemaStudio() {
         quality: specs.resolution,
         source: specs.source,
         codec: specs.codec,
-        audio: specs.audioCodec,
-        channels: specs.channels,
+        audio: "Dolby Digital",
+        channels: "5.1",
         size: specs.fileSize,
         linkType: "gdrive",
         stream_url: versions[0]?.stream_url || "",
@@ -219,7 +278,13 @@ export default function MoinuFlixCinemaStudio() {
       const res = await fetch("/api/movies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ movie, specs, versions }),
+        body: JSON.stringify({
+          movie,
+          specs,
+          versions,
+          category,
+          available_languages: selectedLangs
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -277,7 +342,7 @@ export default function MoinuFlixCinemaStudio() {
         </div>
 
         <span className="text-xs bg-cyan-950/80 text-cyan-400 border border-cyan-800 px-3 py-1 rounded-full font-bold shadow-sm">
-          ⚡ Kodi Binge & Two-Tier Engine
+          ⚡ Multi-Category & Audio-Separated Engine
         </span>
       </header>
 
@@ -345,7 +410,7 @@ export default function MoinuFlixCinemaStudio() {
               </h2>
               <textarea
                 rows={3}
-                placeholder="Paste filename: Cars (2006) 1080p BluRay x265 Multi Audio [Org BD Hindi + English AAC 5.1] [5 GB]..."
+                placeholder="Paste filename: Cars (2006) 1080p BluRay x265 10bit HEVC [Org Hindi BD 5.1 ~ 448Kbps + English AAC 5.1] ESub ~ Tigole.mkv"
                 value={rawFilename}
                 onChange={(e) => setRawFilename(e.target.value)}
                 className="w-full bg-[#1e293b] border border-gray-700 p-2 rounded text-xs outline-none focus:border-cyan-500 font-mono text-gray-200"
@@ -407,10 +472,50 @@ export default function MoinuFlixCinemaStudio() {
                   </div>
                 </div>
 
+                {/* Category & Available Languages Selectors */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-[#0a0f1d] p-3 rounded-lg border border-gray-800">
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-400 block mb-1">
+                      Industry Category (Auto-Locked / Editable)
+                    </label>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="w-full bg-[#1e293b] border border-gray-700 p-2 rounded text-xs text-yellow-400 font-bold"
+                    >
+                      {CATEGORIES.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-400 block mb-1">
+                      Available Languages in Catalog
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ALL_LANGUAGES.map((l) => (
+                        <button
+                          type="button"
+                          key={l}
+                          onClick={() => toggleLanguage(l)}
+                          className={`px-2.5 py-1 rounded text-[11px] font-semibold border transition ${
+                            selectedLangs.includes(l)
+                              ? "bg-red-600 border-red-500 text-white"
+                              : "bg-[#1e293b] border-gray-700 text-gray-400 hover:text-white"
+                          }`}
+                        >
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
                 {/* Kodi Logo Direct URL Field */}
                 <div className="bg-[#0a0f1d] p-3 rounded-lg border border-gray-800">
                   <label className="text-[11px] font-bold text-gray-400 block mb-1">
-                    Kodi ClearLogo URL (Auto-fetched from Fanart.tv)
+                    Kodi ClearLogo URL (Fanart.tv)
                   </label>
                   <input
                     type="text"
@@ -424,31 +529,6 @@ export default function MoinuFlixCinemaStudio() {
                     placeholder="https://assets.fanart.tv/fanart/movies/..."
                     className="w-full bg-[#1e293b] border border-gray-700 px-3 py-1.5 rounded text-xs text-yellow-400 font-mono"
                   />
-                </div>
-
-                {/* Tech Badges Preview */}
-                <div className="flex flex-wrap gap-2 py-1">
-                  <span className="bg-blue-950 text-blue-400 border border-blue-800 px-2.5 py-1 rounded text-xs font-bold">
-                    {specs.resolution}
-                  </span>
-                  <span className="bg-amber-950 text-amber-400 border border-amber-800 px-2.5 py-1 rounded text-xs font-bold">
-                    {specs.source}
-                  </span>
-                  <span className="bg-yellow-950 text-yellow-400 border border-yellow-800 px-2.5 py-1 rounded text-xs font-bold">
-                    {specs.enhancement}
-                  </span>
-                  <span className="bg-purple-950 text-purple-400 border border-purple-800 px-2.5 py-1 rounded text-xs font-bold">
-                    {specs.colorDepth}
-                  </span>
-                  <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 px-2.5 py-1 rounded text-xs font-bold">
-                    {specs.codec}
-                  </span>
-                  <span className="bg-orange-950 text-orange-400 border border-orange-800 px-2.5 py-1 rounded text-xs font-bold">
-                    {specs.audioCodec} @ {specs.audioBitrate}
-                  </span>
-                  <span className="bg-rose-950 text-rose-300 border border-rose-800 px-2.5 py-1 rounded text-xs font-bold">
-                    📦 {specs.fileSize}
-                  </span>
                 </div>
 
                 {/* Master Technical Parameters */}
@@ -474,39 +554,34 @@ export default function MoinuFlixCinemaStudio() {
                     </div>
 
                     <div>
-                      <label className="text-[10px] text-gray-500">Audio Codec</label>
+                      <label className="text-[10px] text-gray-500">Video Codec</label>
                       <select
-                        value={specs.audioCodec}
-                        onChange={(e) => setSpecs({ ...specs, audioCodec: e.target.value })}
+                        value={specs.codec}
+                        onChange={(e) => setSpecs({ ...specs, codec: e.target.value })}
                         className="w-full bg-[#1e293b] border border-gray-700 p-1.5 rounded text-xs text-white"
                       >
-                        <option>Dolby Atmos</option>
-                        <option>Dolby TrueHD</option>
-                        <option>Dolby Digital Plus</option>
-                        <option>Dolby Digital</option>
-                        <option>DTS 5.1</option>
-                        <option>DTS-HD MA</option>
-                        <option>AAC</option>
+                        <option>x265</option>
+                        <option>x264</option>
+                        <option>AV1</option>
                       </select>
                     </div>
 
                     <div>
-                      <label className="text-[10px] text-gray-500">Audio Bitrate</label>
+                      <label className="text-[10px] text-gray-500">Quality Enhancement</label>
                       <select
-                        value={specs.audioBitrate}
-                        onChange={(e) => setSpecs({ ...specs, audioBitrate: e.target.value })}
+                        value={specs.enhancement}
+                        onChange={(e) => setSpecs({ ...specs, enhancement: e.target.value })}
                         className="w-full bg-[#1e293b] border border-gray-700 p-1.5 rounded text-xs text-white"
                       >
-                        <option>448 Kbps</option>
-                        <option>640 Kbps</option>
-                        <option>1509 Kbps</option>
-                        <option>Lossless TrueHD</option>
-                        <option>192 Kbps</option>
+                        <option>Standard</option>
+                        <option>DS4K</option>
+                        <option>Remux</option>
+                        <option>IMAX</option>
                       </select>
                     </div>
 
                     <div>
-                      <label className="text-[10px] text-gray-500">File Size</label>
+                      <label className="text-[10px] text-gray-500">Total File Size</label>
                       <input
                         type="text"
                         value={specs.fileSize}
@@ -518,7 +593,7 @@ export default function MoinuFlixCinemaStudio() {
                   </div>
                 </div>
 
-                {/* STEP 7: Playback Versions with Dropdowns */}
+                {/* STEP 7: Playback Versions with Individual Audio Codec & Channels */}
                 <div className="space-y-3 bg-[#0a0f1d] p-3.5 rounded-lg border border-gray-800">
                   <div className="flex items-center justify-between">
                     <div>
@@ -526,7 +601,7 @@ export default function MoinuFlixCinemaStudio() {
                         Step 7: Playback Versions & Audio Tracks
                       </h3>
                       <p className="text-[10px] text-gray-400">
-                        Configured with Dropdowns for Kodi Titan Bingie / Arctic Horizon
+                        Har language ka alag Audio Codec (DTS-HD 7.1, Dolby Atmos, DD 5.1, AAC 5.1)
                       </p>
                     </div>
                     <button
@@ -550,12 +625,12 @@ export default function MoinuFlixCinemaStudio() {
                             onChange={(e) => updateVersion(idx, "language", e.target.value)}
                             className="bg-[#0f172a] border border-gray-600 px-2 py-1 rounded text-xs text-white"
                           >
-                            <option>Tamil</option>
+                            <option>English</option>
                             <option>Hindi</option>
+                            <option>Tamil</option>
                             <option>Telugu</option>
                             <option>Malayalam</option>
                             <option>Kannada</option>
-                            <option>English</option>
                           </select>
 
                           {/* Quality Dropdown */}
@@ -569,7 +644,7 @@ export default function MoinuFlixCinemaStudio() {
                             <option>720p</option>
                           </select>
 
-                          {/* Source OTT Dropdown */}
+                          {/* Source Dropdown */}
                           <select
                             value={ver.source}
                             onChange={(e) => updateVersion(idx, "source", e.target.value)}
@@ -585,29 +660,18 @@ export default function MoinuFlixCinemaStudio() {
                             <option>WEB-DL</option>
                           </select>
 
-                          {/* Codec Dropdown */}
-                          <select
-                            value={ver.codec}
-                            onChange={(e) => updateVersion(idx, "codec", e.target.value)}
-                            className="bg-[#0f172a] border border-gray-600 px-2 py-1 rounded text-xs text-emerald-400 font-semibold"
-                          >
-                            <option>x265</option>
-                            <option>x264</option>
-                            <option>AV1</option>
-                          </select>
-
-                          {/* Audio Codec Dropdown (Fix: No double looping string) */}
+                          {/* Separate Audio Format Dropdown */}
                           <select
                             value={ver.audio}
                             onChange={(e) => updateVersion(idx, "audio", e.target.value)}
                             className="bg-[#0f172a] border border-gray-600 px-2 py-1 rounded text-xs text-orange-400 font-semibold"
                           >
+                            <option>DTS-HD MA</option>
                             <option>Dolby Atmos</option>
                             <option>Dolby TrueHD</option>
                             <option>Dolby Digital Plus</option>
                             <option>Dolby Digital</option>
                             <option>DTS 5.1</option>
-                            <option>DTS-HD MA</option>
                             <option>AAC</option>
                           </select>
 
@@ -617,17 +681,17 @@ export default function MoinuFlixCinemaStudio() {
                             onChange={(e) => updateVersion(idx, "channels", e.target.value)}
                             className="bg-[#0f172a] border border-gray-600 px-2 py-1 rounded text-xs text-cyan-300 font-semibold"
                           >
-                            <option>5.1</option>
                             <option>7.1</option>
+                            <option>5.1</option>
                             <option>2.0</option>
                           </select>
 
-                          {/* Dub Text / Clean Title */}
+                          {/* Dub Text */}
                           <input
                             type="text"
                             value={ver.dubbed || ""}
                             onChange={(e) => updateVersion(idx, "dubbed", e.target.value)}
-                            placeholder="Dub Text"
+                            placeholder="Tag (e.g. Original Track)"
                             className="bg-[#0f172a] border border-gray-600 px-2 py-1 rounded text-xs text-yellow-300 w-32"
                           />
 
@@ -732,6 +796,7 @@ export default function MoinuFlixCinemaStudio() {
                   <tr className="border-b border-gray-800 text-gray-400">
                     <th className="py-2.5 px-3">Poster</th>
                     <th className="py-2.5 px-3">Title & Year</th>
+                    <th className="py-2.5 px-3">Category</th>
                     <th className="py-2.5 px-3">Chunk File</th>
                     <th className="py-2.5 px-3">Rating</th>
                     <th className="py-2.5 px-3">Versions</th>
@@ -744,7 +809,7 @@ export default function MoinuFlixCinemaStudio() {
                         {item.poster ? (
                           <img src={item.poster} className="w-8 h-12 object-cover rounded shadow" alt={item.title} />
                         ) : (
-                          <div className="w-8 h-12 bg-gray-700 rounded text-[9px] flex items-center justify-center">
+                          <div className="w-8 h-12 bg-gray-800 rounded text-[9px] flex items-center justify-center">
                             N/A
                           </div>
                         )}
@@ -753,6 +818,7 @@ export default function MoinuFlixCinemaStudio() {
                         <div className="font-bold text-white">{item.title}</div>
                         <div className="text-gray-500 text-[11px]">{item.year}</div>
                       </td>
+                      <td className="py-2 px-3 font-semibold text-yellow-400">{item.category || "Hollywood"}</td>
                       <td className="py-2 px-3 font-mono text-cyan-400">{item.chunk_file}</td>
                       <td className="py-2 px-3 font-bold text-yellow-400">⭐ {item.rating || "N/A"}</td>
                       <td className="py-2 px-3">
@@ -776,7 +842,7 @@ export default function MoinuFlixCinemaStudio() {
             Active JSON Payload Verification
           </h2>
           <pre className="bg-[#0a0f1d] border border-gray-800 p-4 rounded text-xs font-mono text-emerald-400 overflow-x-auto max-h-[550px]">
-            {JSON.stringify({ movie, specs, versions }, null, 2)}
+            {JSON.stringify({ movie, specs, versions, category, selectedLangs }, null, 2)}
           </pre>
         </div>
       )}

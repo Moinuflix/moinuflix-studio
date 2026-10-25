@@ -5,7 +5,6 @@ const REPO = process.env.GITHUB_REPO_NAME || "My-Movies";
 const TOKEN = process.env.GITHUB_TOKEN;
 const DATA_DIR = "resources/data";
 
-// Map OTT source to Kodi local skin badge paths
 const SOURCE_IMAGE_MAP: Record<string, string> = {
   AMZN: "resources/images/sources/amazon.png",
   NF: "resources/images/sources/netflix.png",
@@ -16,6 +15,17 @@ const SOURCE_IMAGE_MAP: Record<string, string> = {
   REMUX: "resources/images/sources/bluray.png",
   "WEB-DL": "resources/images/sources/web.png",
 };
+
+function sanitizeAudio(val: string): string {
+  if (!val) return "Dolby Digital";
+  return val.split("@")[0].trim();
+}
+
+function sanitizeRT(val: any): number | null {
+  if (!val) return null;
+  const num = parseInt(String(val).replace(/[^0-9]/g, ""), 10);
+  return isNaN(num) ? null : num;
+}
 
 async function getFileFromGithub(relativePath: string) {
   const fullPath = `${DATA_DIR}/${relativePath}`;
@@ -74,13 +84,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { movie, versions, specs } = body;
+    const { movie, versions, specs, category, available_languages } = body;
 
     if (!movie || !movie.id) {
       return NextResponse.json({ error: "Invalid movie payload." }, { status: 400 });
     }
 
-    // 1. Fetch catalog.json
     let catalogFile = await getFileFromGithub("catalog.json");
     let catalog = catalogFile ? catalogFile.json : { movies: [] };
     let catalogSha = catalogFile ? catalogFile.sha : null;
@@ -105,15 +114,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Fetch target chunk
     let chunkFile = await getFileFromGithub(targetChunkRelPath);
     let chunk = chunkFile ? chunkFile.json : { movies: [] };
     let chunkSha = chunkFile ? chunkFile.sha : null;
 
     const primaryStreamUrl = versions.find((v: any) => v.stream_url)?.stream_url || "";
-    const availableLangs = Array.from(new Set(versions.map((v: any) => v.language)));
+    const activeLangs = available_languages || Array.from(new Set(versions.map((v: any) => v.language)));
+    const clearLogoUrl = movie.artwork?.clearlogo || movie.clearlogo || "";
 
-    // 3. Complete Detailed Record for chunk_XX.json matching your schema
+    const studioArray = Array.isArray(movie.studio)
+      ? movie.studio
+      : (movie.studio || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+
+    // 1. Chunk Detailed Record
     const completeChunkRecord = {
       id: String(movie.id),
       title: movie.title,
@@ -124,10 +137,11 @@ export async function POST(req: NextRequest) {
       runtime: movie.runtime || 120,
       release_date: movie.release_date || "",
       certification: movie.certification || "UA",
-      original_language: movie.original_language || "ta",
+      original_language: movie.original_language || "en",
+      category: category || "Hollywood (English)",
       genres: movie.genres || [],
-      country: movie.countries || ["India"],
-      studio: movie.studio ? [movie.studio] : [],
+      country: movie.countries || ["United States of America"],
+      studio: studioArray,
       director: movie.director || [],
       writers: movie.writers || [],
       cast: movie.cast || [],
@@ -135,7 +149,7 @@ export async function POST(req: NextRequest) {
         poster: movie.artwork?.poster || "",
         thumbnail: movie.artwork?.thumbnail || null,
         fanart: movie.artwork?.fanart || "",
-        clearlogo: movie.artwork?.clearlogo || "",
+        clearlogo: clearLogoUrl,
         clearart: movie.artwork?.clearart || null,
         banner: movie.artwork?.banner || null,
         landscape: movie.artwork?.landscape || null,
@@ -148,46 +162,43 @@ export async function POST(req: NextRequest) {
       },
       collection: movie.collection || "",
       similar_movies: [],
-      awards: {
-        summary: movie.awards || "",
-      },
-      financials: {
-        box_office: movie.financials?.box_office || "",
-      },
+      awards: { summary: movie.awards || "" },
+      financials: { box_office: movie.financials?.box_office || "" },
       ratings: [
-        { source: "IMDb", value: movie.ratings?.imdb || null, out_of: 10 },
-        { source: "Rotten Tomatoes", value: movie.ratings?.rotten_tomatoes || null, unit: "percent" },
-        { source: "TMDb", value: movie.ratings?.tmdb || null, out_of: 10 },
+        { source: "IMDb", value: movie.ratings?.imdb ? Number(movie.ratings.imdb) : null, out_of: 10 },
+        { source: "Rotten Tomatoes", value: sanitizeRT(movie.ratings?.rotten_tomatoes), unit: "percent" },
+        { source: "TMDb", value: movie.ratings?.tmdb ? Number(movie.ratings.tmdb) : null, out_of: 10 },
       ],
       tags: {
-        quality: [specs.resolution],
-        source: [specs.source],
-        codec: [specs.codec],
-        hdr: [specs.hdr],
-        audio: [specs.audioCodec],
-        other: [specs.enhancement, specs.colorDepth],
-        language: availableLangs,
+        quality: [specs.resolution || "1080p"],
+        source: [specs.source || "BluRay"],
+        codec: [specs.codec || "x265"],
+        hdr: [specs.hdr || "SDR"],
+        audio: Array.from(new Set(versions.map((v: any) => sanitizeAudio(v.audio)))),
+        other: [specs.enhancement || "Standard", specs.colorDepth || "10bit"],
+        language: activeLangs,
       },
       specs: {
-        resolution: specs.resolution,
-        source: specs.source,
-        codec: specs.codec,
-        bit_depth: specs.colorDepth,
-        audio: `${specs.audioCodec} @ ${specs.audioBitrate}`,
-        channels: specs.channels || "5.1",
-        languages: availableLangs,
+        resolution: specs.resolution || "1080p",
+        source: specs.source || "BluRay",
+        codec: specs.codec || "x265",
+        bit_depth: specs.colorDepth || "10bit",
+        audio: sanitizeAudio(versions[0]?.audio || specs.audioCodec),
+        channels: versions[0]?.channels || "5.1",
+        languages: activeLangs,
         subtitles: ["ESub"],
-        size: specs.fileSize || "14 GB",
+        size: specs.fileSize || "5 GB",
       },
       versions: versions.map((v: any) => ({
         id: v.id,
         name: v.dubbed || `${movie.title} [${v.language}]`,
         language: v.language,
-        quality: v.quality,
-        source: v.source,
+        quality: v.quality || specs.resolution,
+        source: v.source || specs.source,
         source_image: SOURCE_IMAGE_MAP[v.source] || SOURCE_IMAGE_MAP["BluRay"],
-        codec: v.codec,
-        audio: v.audio,
+        codec: v.codec || specs.codec,
+        audio: sanitizeAudio(v.audio),
+        channels: v.channels || "5.1",
         size: v.size || specs.fileSize,
         stream_url: v.stream_url,
       })),
@@ -203,29 +214,30 @@ export async function POST(req: NextRequest) {
       chunk.movies.unshift(completeChunkRecord);
     }
 
-    // 4. Exact catalog.json structure
+    // 2. Catalog Record with Category
     const catalogRecord = {
       id: String(movie.id),
       title: movie.title,
       year: movie.year,
+      category: category || "Hollywood (English)",
       poster: movie.artwork?.poster || "",
       fanart: movie.artwork?.fanart || "",
-      rating: movie.ratings?.imdb || movie.ratings?.tmdb || 7.5,
-      original_language: movie.original_language || "ta",
-      chunk_file: `${DATA_DIR}/${targetChunkRelPath}`,
+      logo: clearLogoUrl,
+      rating: movie.ratings?.imdb ? Number(movie.ratings.imdb) : 7.5,
+      original_language: movie.original_language || "en",
+      chunk_file: targetChunkRelPath,
       primary_stream_url: primaryStreamUrl,
-      available_languages: availableLangs,
+      available_languages: activeLangs,
       version_count: versions.length,
       available_versions: versions.map((v: any) => ({
         language: v.language,
-        dubbed: v.dubbed || "",
-        quality: v.quality,
-        source: v.source,
+        quality: v.quality || specs.resolution,
+        source: v.source || specs.source,
         source_image: SOURCE_IMAGE_MAP[v.source] || SOURCE_IMAGE_MAP["BluRay"],
         format: specs.source === "BluRay" || specs.source === "REMUX" ? "BluRay" : "WEB-DL",
         codec: v.codec || specs.codec,
-        audio: v.audio,
-        channels: specs.channels || "5.1",
+        audio: sanitizeAudio(v.audio),
+        channels: v.channels || "5.1",
       })),
     };
 
@@ -236,7 +248,6 @@ export async function POST(req: NextRequest) {
       catalog.movies.unshift(catalogRecord);
     }
 
-    // 5. Commit Chunk and Catalog
     await putFileToGithub(
       targetChunkRelPath,
       chunk,
@@ -253,7 +264,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      chunkPath: `${DATA_DIR}/${targetChunkRelPath}`,
+      chunkPath: targetChunkRelPath,
       commitSha: catalogCommit.commit.sha,
     });
   } catch (err: any) {
