@@ -3,9 +3,19 @@ import { NextRequest, NextResponse } from "next/server";
 const OWNER = process.env.GITHUB_REPO_OWNER || "Moinuflix";
 const REPO = process.env.GITHUB_REPO_NAME || "My-Movies";
 const TOKEN = process.env.GITHUB_TOKEN;
-
-// Exact repo folder path from screenshot: resources/data/
 const DATA_DIR = "resources/data";
+
+// Map OTT source to Kodi local skin badge paths
+const SOURCE_IMAGE_MAP: Record<string, string> = {
+  AMZN: "resources/images/sources/amazon.png",
+  NF: "resources/images/sources/netflix.png",
+  DSNP: "resources/images/sources/hotstar.png",
+  ZEE5: "resources/images/sources/zee5.png",
+  SONYLIV: "resources/images/sources/sonyliv.png",
+  BluRay: "resources/images/sources/bluray.png",
+  REMUX: "resources/images/sources/bluray.png",
+  "WEB-DL": "resources/images/sources/web.png",
+};
 
 async function getFileFromGithub(relativePath: string) {
   const fullPath = `${DATA_DIR}/${relativePath}`;
@@ -49,27 +59,18 @@ async function putFileToGithub(relativePath: string, contentJson: any, sha: stri
   return await res.json();
 }
 
-// GET: Library Manager read from resources/data/catalog.json
 export async function GET() {
-  if (!TOKEN) {
-    return NextResponse.json({ error: "Server missing GITHUB_TOKEN" }, { status: 500 });
-  }
+  if (!TOKEN) return NextResponse.json({ error: "Missing GITHUB_TOKEN" }, { status: 500 });
   try {
     const catalogData = await getFileFromGithub("catalog.json");
-    if (!catalogData) {
-      return NextResponse.json({ movies: [] });
-    }
-    return NextResponse.json(catalogData.json);
+    return NextResponse.json(catalogData ? catalogData.json : { movies: [] });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-// POST: Save to resources/data/chunks/ & resources/data/catalog.json
 export async function POST(req: NextRequest) {
-  if (!TOKEN) {
-    return NextResponse.json({ error: "Server missing GITHUB_TOKEN" }, { status: 500 });
-  }
+  if (!TOKEN) return NextResponse.json({ error: "Missing GITHUB_TOKEN" }, { status: 500 });
 
   try {
     const body = await req.json();
@@ -79,7 +80,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid movie payload." }, { status: 400 });
     }
 
-    // 1. Fetch resources/data/catalog.json
+    // 1. Fetch catalog.json
     let catalogFile = await getFileFromGithub("catalog.json");
     let catalog = catalogFile ? catalogFile.json : { movies: [] };
     let catalogSha = catalogFile ? catalogFile.sha : null;
@@ -91,7 +92,6 @@ export async function POST(req: NextRequest) {
     if (isEdit) {
       targetChunkRelPath = catalog.movies[existingIndex].chunk_file.replace(/^resources\/data\//, "");
     } else {
-      // Find chunk with space (< 50 movies) in resources/data/chunks/
       let chunkNum = 1;
       while (true) {
         const padded = String(chunkNum).padStart(2, "0");
@@ -110,16 +110,89 @@ export async function POST(req: NextRequest) {
     let chunk = chunkFile ? chunkFile.json : { movies: [] };
     let chunkSha = chunkFile ? chunkFile.sha : null;
 
-    // 3. Assemble Full Metadata Record for Chunk
     const primaryStreamUrl = versions.find((v: any) => v.stream_url)?.stream_url || "";
     const availableLangs = Array.from(new Set(versions.map((v: any) => v.language)));
 
+    // 3. Complete Detailed Record for chunk_XX.json matching your schema
     const completeChunkRecord = {
-      ...movie,
-      specs: specs || {},
+      id: String(movie.id),
+      title: movie.title,
+      original_title: movie.original_title || movie.title,
+      year: movie.year,
+      tagline: movie.tagline || "",
+      plot: movie.plot || "",
+      runtime: movie.runtime || 120,
+      release_date: movie.release_date || "",
+      certification: movie.certification || "UA",
+      original_language: movie.original_language || "ta",
+      genres: movie.genres || [],
+      country: movie.countries || ["India"],
+      studio: movie.studio ? [movie.studio] : [],
+      director: movie.director || [],
+      writers: movie.writers || [],
+      cast: movie.cast || [],
+      artwork: {
+        poster: movie.artwork?.poster || "",
+        thumbnail: movie.artwork?.thumbnail || null,
+        fanart: movie.artwork?.fanart || "",
+        clearlogo: movie.artwork?.clearlogo || "",
+        clearart: movie.artwork?.clearart || null,
+        banner: movie.artwork?.banner || null,
+        landscape: movie.artwork?.landscape || null,
+        character_art: [],
+      },
+      trailer: movie.trailer || "",
+      external_ids: {
+        tmdb_id: movie.tmdb_id || null,
+        imdb_id: movie.imdb_id || null,
+      },
+      collection: movie.collection || "",
+      similar_movies: [],
+      awards: {
+        summary: movie.awards || "",
+      },
+      financials: {
+        box_office: movie.financials?.box_office || "",
+      },
+      ratings: [
+        { source: "IMDb", value: movie.ratings?.imdb || null, out_of: 10 },
+        { source: "Rotten Tomatoes", value: movie.ratings?.rotten_tomatoes || null, unit: "percent" },
+        { source: "TMDb", value: movie.ratings?.tmdb || null, out_of: 10 },
+      ],
+      tags: {
+        quality: [specs.resolution],
+        source: [specs.source],
+        codec: [specs.codec],
+        hdr: [specs.hdr],
+        audio: [specs.audioCodec],
+        other: [specs.enhancement, specs.colorDepth],
+        language: availableLangs,
+      },
+      specs: {
+        resolution: specs.resolution,
+        source: specs.source,
+        codec: specs.codec,
+        bit_depth: specs.colorDepth,
+        audio: `${specs.audioCodec} @ ${specs.audioBitrate}`,
+        channels: specs.channels || "5.1",
+        languages: availableLangs,
+        subtitles: ["ESub"],
+        size: specs.fileSize || "14 GB",
+      },
+      versions: versions.map((v: any) => ({
+        id: v.id,
+        name: v.dubbed || `${movie.title} [${v.language}]`,
+        language: v.language,
+        quality: v.quality,
+        source: v.source,
+        source_image: SOURCE_IMAGE_MAP[v.source] || SOURCE_IMAGE_MAP["BluRay"],
+        codec: v.codec,
+        audio: v.audio,
+        size: v.size || specs.fileSize,
+        stream_url: v.stream_url,
+      })),
       stream_url: primaryStreamUrl,
-      versions: versions,
-      updated_at: new Date().toISOString(),
+      soundtrack: {},
     };
 
     if (!chunk.movies) chunk.movies = [];
@@ -130,15 +203,15 @@ export async function POST(req: NextRequest) {
       chunk.movies.unshift(completeChunkRecord);
     }
 
-    // 4. Assemble Catalog Summary Record (Points to resources/data/chunks/...)
+    // 4. Exact catalog.json structure
     const catalogRecord = {
       id: String(movie.id),
       title: movie.title,
       year: movie.year,
       poster: movie.artwork?.poster || "",
       fanart: movie.artwork?.fanart || "",
-      rating: movie.ratings?.imdb || movie.ratings?.tmdb || null,
-      original_language: movie.original_language || "en",
+      rating: movie.ratings?.imdb || movie.ratings?.tmdb || 7.5,
+      original_language: movie.original_language || "ta",
       chunk_file: `${DATA_DIR}/${targetChunkRelPath}`,
       primary_stream_url: primaryStreamUrl,
       available_languages: availableLangs,
@@ -148,9 +221,11 @@ export async function POST(req: NextRequest) {
         dubbed: v.dubbed || "",
         quality: v.quality,
         source: v.source,
-        codec: v.codec,
+        source_image: SOURCE_IMAGE_MAP[v.source] || SOURCE_IMAGE_MAP["BluRay"],
+        format: specs.source === "BluRay" || specs.source === "REMUX" ? "BluRay" : "WEB-DL",
+        codec: v.codec || specs.codec,
         audio: v.audio,
-        size: v.size || specs?.fileSize || "",
+        channels: specs.channels || "5.1",
       })),
     };
 
@@ -161,7 +236,7 @@ export async function POST(req: NextRequest) {
       catalog.movies.unshift(catalogRecord);
     }
 
-    // 5. Commit Chunk First, Then Catalog
+    // 5. Commit Chunk and Catalog
     await putFileToGithub(
       targetChunkRelPath,
       chunk,
@@ -179,53 +254,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       chunkPath: `${DATA_DIR}/${targetChunkRelPath}`,
-      isEdit,
       commitSha: catalogCommit.commit.sha,
     });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
-}
-
-// DELETE: Remove from resources/data/catalog.json & chunks
-export async function DELETE(req: NextRequest) {
-  if (!TOKEN) {
-    return NextResponse.json({ error: "Server missing GITHUB_TOKEN" }, { status: 500 });
-  }
-
-  try {
-    const { searchParams } = new URL(req.url);
-    const movieId = searchParams.get("id");
-
-    if (!movieId) {
-      return NextResponse.json({ error: "Missing movieId to delete." }, { status: 400 });
-    }
-
-    const catalogFile = await getFileFromGithub("catalog.json");
-    if (!catalogFile) {
-      return NextResponse.json({ error: "catalog.json not found in resources/data." }, { status: 404 });
-    }
-
-    const catalog = catalogFile.json;
-    const targetIdx = (catalog.movies || []).findIndex((m: any) => String(m.id) === String(movieId));
-    if (targetIdx === -1) {
-      return NextResponse.json({ error: "Movie not found in catalog." }, { status: 404 });
-    }
-
-    const targetMovie = catalog.movies[targetIdx];
-    const chunkRelPath = targetMovie.chunk_file.replace(/^resources\/data\//, "");
-
-    const chunkFile = await getFileFromGithub(chunkRelPath);
-    if (chunkFile && chunkFile.json.movies) {
-      const chunk = chunkFile.json;
-      chunk.movies = chunk.movies.filter((m: any) => String(m.id) !== String(movieId));
-      await putFileToGithub(chunkRelPath, chunk, chunkFile.sha, `Delete movie ${movieId} from ${DATA_DIR}/${chunkRelPath}`);
-    }
-
-    catalog.movies.splice(targetIdx, 1);
-    await putFileToGithub("catalog.json", catalog, catalogFile.sha, `Remove movie ${movieId} from ${DATA_DIR}/catalog.json`);
-
-    return NextResponse.json({ success: true, deletedId: movieId });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
