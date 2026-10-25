@@ -1,0 +1,6 @@
+{"timestamp":"00:00:08.717","source":"Server","level":"WARN","message":"⚠ Slow filesystem detected. The benchmark took 213ms. If /home/moinudeen-k/moinuflix-admin/.next/dev is a network drive, consider moving it to a local folder.\nSee more: https://nextjs.org/docs/app/guides/local-development"}
+{"timestamp":"00:00:09.499","source":"Server","level":"LOG","message":""}
+{"timestamp":"00:00:13.395","source":"Server","level":"LOG","message":"○ Compiling / ..."}
+{"timestamp":"00:00:24.126","source":"Browser","level":"INFO","message":"Download the React DevTools for a better development experience: https://react.dev/link/react-devtools"}
+{"timestamp":"00:00:24.892","source":"Browser","level":"INFO","message":"Download the React DevTools for a better development experience: https://react.dev/link/react-devtools"}
+{"timestamp":"00:05:22.302","source":"Server","level":"LOG","message":"  Reload env: .env.local"}

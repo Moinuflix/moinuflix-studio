@@ -1,0 +1,7 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/fetch-meta/route": "/api/fetch-meta",
+  "/api/save-movie/route": "/api/save-movie",
+  "/page": "/"
+}
