@@ -1,135 +1,149 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function POST(req: Request) {
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const tmdbId = searchParams.get("id");
+
+  if (!tmdbId) {
+    return NextResponse.json({ error: "Missing movie ID" }, { status: 400 });
+  }
+
+  const tmdbKey = process.env.TMDB_API_KEY;
+  const omdbKey = process.env.OMDB_API_KEY;
+  const fanartKey = process.env.FANART_API_KEY;
+
+  if (!tmdbKey) {
+    return NextResponse.json({ error: "Server missing TMDB_API_KEY" }, { status: 500 });
+  }
+
   try {
-    const { query, tmdbId } = await req.json();
-    const TMDB_KEY = process.env.TMDB_API_KEY;
-    const OMDB_KEY = process.env.OMDB_API_KEY;
-    const FANART_KEY = process.env.FANART_API_KEY;
-
-    if (query && !tmdbId) {
-      const searchRes = await fetch(
-        `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}`
-      );
-      const searchData = await searchRes.json();
-      return NextResponse.json({ results: searchData.results || [] });
-    }
-
-    const movieRes = await fetch(
-      `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_KEY}&append_to_response=credits,videos,release_dates`
+    const tmdbRes = await fetch(
+      `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${tmdbKey}&append_to_response=credits,videos,release_dates,external_ids`,
+      { next: { revalidate: 3600 } }
     );
-    const movie = await movieRes.json();
+    const tmdb = await tmdbRes.json();
 
-    // 1. Fanart.tv (Strictly English Logo First)
+    if (tmdb.success === false) {
+      return NextResponse.json({ error: tmdb.status_message }, { status: 404 });
+    }
+
+    let certification = "UA";
+    const releaseResults = tmdb.release_dates?.results || [];
+    const inRelease = releaseResults.find((r: any) => r.iso_3166_1 === "IN");
+    const usRelease = releaseResults.find((r: any) => r.iso_3166_1 === "US");
+    const targetRelease = inRelease || usRelease;
+    if (targetRelease?.release_dates?.length > 0) {
+      const match = targetRelease.release_dates.find((d: any) => d.certification);
+      if (match?.certification) certification = match.certification;
+    }
+
+    const rawCrew = tmdb.credits?.crew || [];
+    const directors = rawCrew
+      .filter((c: any) => c.job === "Director")
+      .map((c: any) => ({ name: c.name, job: "Director" }));
+    const writers = rawCrew
+      .filter((c: any) => ["Writer", "Screenplay", "Story"].includes(c.job))
+      .map((c: any) => ({ name: c.name, job: c.job }));
+    const cast = (tmdb.credits?.cast || []).slice(0, 15).map((c: any) => ({
+      name: c.name,
+      character: c.character,
+      profile: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null,
+    }));
+
+    const videos = tmdb.videos?.results || [];
+    const trailer = videos.find((v: any) => v.type === "Trailer" && v.site === "YouTube") || videos[0];
+
+    let omdbData: any = {};
+    const imdbId = tmdb.external_ids?.imdb_id || tmdb.imdb_id;
+    if (omdbKey && imdbId) {
+      try {
+        const omdbRes = await fetch(`https://www.omdbapi.com/?apikey=${omdbKey}&i=${imdbId}`);
+        omdbData = await omdbRes.json();
+      } catch (_) {}
+    }
+
     let clearlogo = "";
-    if (FANART_KEY) {
+    let clearart = "";
+    let banner = "";
+    let landscape = "";
+
+    if (fanartKey) {
       try {
-        const fanartRes = await fetch(
-          `https://webservice.fanart.tv/v3/movies/${tmdbId}?api_key=${FANART_KEY}`
-        );
-        const fanartData = await fanartRes.json();
-        const logos = (fanartData.hdmovielogo || []).concat(fanartData.movielogo || []);
-        // Prefer English first
-        const enLogo = logos.find((l: any) => l.lang === "en") || logos.find((l: any) => l.lang === "" || l.lang === "00");
-        clearlogo = enLogo ? enLogo.url : (logos.length > 0 ? logos[0].url : "");
-      } catch (err) {}
-    }
+        const fanartRes = await fetch(`https://webservice.fanart.tv/v3/movies/${tmdbId}?api_key=${fanartKey}`);
+        if (fanartRes.ok) {
+          const fa = await fanartRes.json();
+          const logos = fa.hdmovielogo || fa.movielogo || [];
+          const enLogo = logos.find((l: any) => l.lang === "en") || logos[0];
+          if (enLogo) clearlogo = enLogo.url;
 
-    // 2. OMDb API
-    let omdbRatings: any[] = [];
-    let boxOffice = "$0";
-    let awards = "";
-    if (movie.imdb_id && OMDB_KEY) {
-      try {
-        const omdbRes = await fetch(`https://www.omdbapi.com/?i=${movie.imdb_id}&apikey=${OMDB_KEY}`);
-        const omdbData = await omdbRes.json();
-        awards = omdbData.Awards || "";
-        boxOffice = omdbData.BoxOffice || "";
-        omdbRatings = (omdbData.Ratings || []).map((r: any) => {
-          if (r.Source === "Rotten Tomatoes") return { source: r.Source, value: parseInt(r.Value), unit: "percent" };
-          if (r.Source === "Metacritic") return { source: r.Source, value: parseInt(r.Value.split("/")[0]), out_of: 100 };
-          return { source: r.Source, value: parseFloat(r.Value.split("/")[0]), out_of: 10 };
-        });
-      } catch (err) {}
-    }
+          const arts = fa.hdmovieclearart || fa.movieclearart || [];
+          if (arts[0]) clearart = arts[0].url;
 
-    // 3. Wikipedia Summary
-    let wikiPlot = "";
-    try {
-      const movieYear = new Date(movie.release_date).getFullYear();
-      const wikiSearchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(movie.title + " " + movieYear + " film")}&format=json&origin=*`;
-      const wikiSearchRes = await fetch(wikiSearchUrl);
-      const wikiSearchData = await wikiSearchRes.json();
+          const banners = fa.moviebanner || [];
+          if (banners[0]) banner = banners[0].url;
 
-      if (wikiSearchData?.query?.search?.length > 0) {
-        const pageTitle = wikiSearchData.query.search[0].title;
-        const pageUrl = `https://en.wikipedia.org/w/api.php?prop=extracts&exintro=true&explaintext=true&titles=${encodeURIComponent(pageTitle)}&format=json&origin=*`;
-        const pageRes = await fetch(pageUrl);
-        const pageData = await pageRes.json();
-        const pages = pageData?.query?.pages || {};
-        const firstPageId = Object.keys(pages)[0];
-        if (firstPageId && pages[firstPageId]?.extract) {
-          wikiPlot = pages[firstPageId].extract;
+          const thumbs = fa.moviethumb || [];
+          if (thumbs[0]) landscape = thumbs[0].url;
         }
-      }
-    } catch (err) {}
-
-    // 4. Certification (Priority: India -> US -> Default)
-    let certification = "NR";
-    const releaseDates = movie.release_dates?.results || [];
-    const inRelease = releaseDates.find((r: any) => r.iso_3166_1 === "IN");
-    const usRelease = releaseDates.find((r: any) => r.iso_3166_1 === "US");
-    const chosenRelease = inRelease || usRelease || releaseDates[0];
-
-    if (chosenRelease && chosenRelease.release_dates?.length > 0) {
-      const certEntry = chosenRelease.release_dates.find((d: any) => d.certification && d.certification.trim() !== "");
-      if (certEntry) {
-        certification = certEntry.certification;
-      }
+      } catch (_) {}
     }
 
-    // Trailer Link
-    const trailers = (movie.videos?.results || []).filter((v: any) => v.type === "Trailer" && v.site === "YouTube");
-    const trailerUrl = trailers.length > 0 ? `https://www.youtube.com/watch?v=${trailers[0].key}` : "";
+    let plotSummary = tmdb.overview || "";
+    if ((!plotSummary || plotSummary.length < 100) && tmdb.title) {
+      try {
+        const wikiRes = await fetch(
+          `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(tmdb.title + " (film)")}`
+        );
+        if (wikiRes.ok) {
+          const wikiJson = await wikiRes.json();
+          if (wikiJson.extract) plotSummary = wikiJson.extract;
+        }
+      } catch (_) {}
+    }
 
-    return NextResponse.json({
-      title: movie.title,
-      original_title: movie.original_title,
-      year: new Date(movie.release_date).getFullYear() || 2024,
-      tagline: movie.tagline || "",
-      plot: movie.overview || wikiPlot || "",
-      wiki_summary: wikiPlot || null,
-      runtime: movie.runtime || 0,
-      release_date: movie.release_date || "",
-      certification,
-      original_language: movie.original_language,
-      genres: (movie.genres || []).map((g: any) => g.name),
-      country: (movie.production_countries || []).map((c: any) => c.name),
-      studio: (movie.production_companies || []).map((c: any) => c.name),
-      director: (movie.credits?.crew || []).filter((c: any) => c.job === "Director").map((c: any) => ({ name: c.name })),
-      writers: (movie.credits?.crew || []).filter((c: any) => ["Writer", "Screenplay"].includes(c.job)).map((c: any) => ({ name: c.name })),
-      cast: (movie.credits?.cast || []).slice(0, 10).map((c: any) => ({
-        name: c.name,
-        character: c.character,
-        profile: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null,
-      })),
+    const completeMetadata = {
+      id: String(tmdb.id),
+      tmdb_id: tmdb.id,
+      imdb_id: imdbId || null,
+      title: tmdb.title,
+      original_title: tmdb.original_title || tmdb.title,
+      tagline: tmdb.tagline || "",
+      year: tmdb.release_date ? parseInt(tmdb.release_date.split("-")[0], 10) : null,
+      release_date: tmdb.release_date || null,
+      runtime: tmdb.runtime || 120,
+      certification: certification,
+      original_language: tmdb.original_language || "en",
+      genres: (tmdb.genres || []).map((g: any) => g.name),
+      countries: (tmdb.production_countries || []).map((c: any) => c.name),
+      studio: (tmdb.production_companies || []).map((c: any) => c.name).join(", "),
+      plot: plotSummary,
+      director: directors,
+      writers: writers,
+      cast: cast,
       artwork: {
-        poster: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : "",
-        thumbnail: null,
-        fanart: movie.backdrop_path ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}` : "",
-        clearlogo,
-        clearart: null,
-        banner: null,
-        landscape: null,
-        character_art: [],
+        poster: tmdb.poster_path ? `https://image.tmdb.org/t/p/w780${tmdb.poster_path}` : "",
+        thumbnail: tmdb.poster_path ? `https://image.tmdb.org/t/p/w342${tmdb.poster_path}` : "",
+        fanart: tmdb.backdrop_path ? `https://image.tmdb.org/t/p/original${tmdb.backdrop_path}` : "",
+        clearlogo: clearlogo,
+        clearart: clearart,
+        banner: banner,
+        landscape: landscape,
       },
-      trailer: trailerUrl,
-      external_ids: { tmdb_id: movie.id, imdb_id: movie.imdb_id },
-      collection: movie.belongs_to_collection?.name || null,
-      awards: { summary: awards },
-      financials: { box_office: boxOffice },
-      ratings: omdbRatings.length > 0 ? omdbRatings : [{ source: "TMDb", value: movie.vote_average, out_of: 10 }],
-    });
+      trailer: trailer ? `https://www.youtube.com/watch?v=${trailer.key}` : "",
+      ratings: {
+        tmdb: tmdb.vote_average || null,
+        imdb: omdbData.imdbRating && omdbData.imdbRating !== "N/A" ? parseFloat(omdbData.imdbRating) : null,
+        rotten_tomatoes: (omdbData.Ratings || []).find((r: any) => r.Source === "Rotten Tomatoes")?.Value || null,
+      },
+      awards: omdbData.Awards && omdbData.Awards !== "N/A" ? omdbData.Awards : "",
+      financials: {
+        budget: tmdb.budget || null,
+        box_office: omdbData.BoxOffice || null,
+      },
+      collection: tmdb.belongs_to_collection ? tmdb.belongs_to_collection.name : null,
+    };
+
+    return NextResponse.json(completeMetadata);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
