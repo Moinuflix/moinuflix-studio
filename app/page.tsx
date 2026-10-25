@@ -1,10 +1,12 @@
 "use client";
 import React, { useState } from "react";
 
+const TMDB_KEY = "051ccf72e026820cb53b8b8531b6a2ba";
+
 export default function MoinuFlixStudio() {
   const [query, setQuery] = useState("");
-  const [searchResults, setSearchResults] = useState([]);
-  const [selectedMovie, setSelectedMovie] = useState(null);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [selectedMovie, setSelectedMovie] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [commitStatus, setCommitStatus] = useState("");
 
@@ -22,13 +24,13 @@ export default function MoinuFlixStudio() {
     source: "BluRay",
     audioCodec: "DDP 5.1",
     audioBitrate: "448 Kbps",
-    languages: ["Hindi", "Tamil", "Telugu", "English"]
+    languages: "Hindi-Tamil-Telugu-English"
   });
 
   const [masterUrl, setMasterUrl] = useState("");
   const [versions, setVersions] = useState([
     {
-      language: "Multi Audio (Hindi-Tamil-Telugu-Eng)",
+      language: "Hindi-Tamil-Telugu-English",
       quality: "1080p DS4K 10bit",
       source: "BluRay",
       audio: "DDP 5.1 @ 448Kbps",
@@ -61,17 +63,17 @@ export default function MoinuFlixStudio() {
     else if (fn.includes("truehd")) aud = "Dolby TrueHD";
     else if (fn.includes("ddp") || fn.includes("eac3")) aud = "DDP 5.1";
 
-    let br = "Auto";
+    let br = "448 Kbps";
     if (fn.includes("448kbps") || fn.includes("448")) br = "448 Kbps";
     else if (fn.includes("640kbps") || fn.includes("640")) br = "640 Kbps";
     else if (fn.includes("1509kbps") || fn.includes("1509")) br = "1509 Kbps";
 
-    let langs = [];
+    let langs: string[] = [];
     if (fn.includes("hindi")) langs.push("Hindi");
     if (fn.includes("tamil")) langs.push("Tamil");
     if (fn.includes("telugu")) langs.push("Telugu");
     if (fn.includes("english") || fn.includes("eng")) langs.push("English");
-    if (langs.length === 0) langs = ["Tamil", "Hindi"];
+    const langStr = langs.length > 0 ? langs.join("-") : "Hindi-Tamil-Telugu-English";
 
     setSpecs({
       edition: fn.includes("extended") ? "Extended Collector's Edition" : "Standard",
@@ -83,12 +85,12 @@ export default function MoinuFlixStudio() {
       source: src,
       audioCodec: aud,
       audioBitrate: br,
-      languages: langs
+      languages: langStr
     });
 
     setVersions([
       {
-        language: langs.join("-"),
+        language: langStr,
         quality: `${res} ${enh} ${col}`,
         source: src,
         audio: `${aud} ~ ${br}`,
@@ -97,28 +99,45 @@ export default function MoinuFlixStudio() {
     ]);
   };
 
-  // Search Movie
+  // Direct TMDb Search (No backend failure)
   const searchMovies = async () => {
     if (!query) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/search-tmdb?q=${encodeURIComponent(query)}`);
+      const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}`);
       const data = await res.json();
       setSearchResults(data.results || []);
-    } catch (e) {
-      alert("Error searching movie");
+    } catch (e: any) {
+      alert("Error searching movie: " + e.message);
     }
     setLoading(false);
   };
 
-  const selectMovie = async (item) => {
+  const selectMovie = async (item: any) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/fetch-meta?id=${item.id}`);
+      const res = await fetch(`https://api.themoviedb.org/3/movie/${item.id}?api_key=${TMDB_KEY}&append_to_response=release_dates`);
       const data = await res.json();
-      setSelectedMovie(data);
-    } catch (e) {
-      alert("Error loading metadata");
+
+      let cert = "UA";
+      const releases = data.release_dates?.results || [];
+      const inRelease = releases.find((r: any) => r.iso_3166_1 === "IN") || releases.find((r: any) => r.iso_3166_1 === "US");
+      if (inRelease && inRelease.release_dates?.[0]?.certification) {
+        cert = inRelease.release_dates[0].certification;
+      }
+
+      setSelectedMovie({
+        id: data.id,
+        title: data.title,
+        year: data.release_date ? data.release_date.split("-")[0] : "",
+        runtime: data.runtime || 120,
+        genres: data.genres?.map((g: any) => g.name) || [],
+        plot: data.overview || "",
+        poster: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : "",
+        certification: cert
+      });
+    } catch (e: any) {
+      alert("Error loading movie details: " + e.message);
     }
     setLoading(false);
   };
@@ -144,9 +163,9 @@ export default function MoinuFlixStudio() {
       if (data.success) {
         setCommitStatus("🎉 Successfully Synced to GitHub & Kodi Live!");
       } else {
-        setCommitStatus("Failed: " + data.error);
+        setCommitStatus("Failed: " + (data.error || "Check GitHub Token"));
       }
-    } catch (e) {
+    } catch (e: any) {
       setCommitStatus("Error syncing: " + e.message);
     }
   };
@@ -176,23 +195,28 @@ export default function MoinuFlixStudio() {
                 placeholder="Type movie name (e.g. Avatar)..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && searchMovies()}
                 className="w-full bg-[#1e293b] border border-gray-700 px-3 py-2 rounded text-sm outline-none focus:border-red-500"
               />
               <button onClick={searchMovies} className="bg-red-600 hover:bg-red-700 font-bold px-4 py-2 rounded text-sm">
-                Find
+                {loading ? "..." : "Find"}
               </button>
             </div>
 
             {/* Results */}
             {searchResults.length > 0 && (
-              <div className="mt-3 max-h-52 overflow-y-auto space-y-2 pr-1">
+              <div className="mt-3 max-h-56 overflow-y-auto space-y-2 pr-1">
                 {searchResults.map((m) => (
                   <div
                     key={m.id}
                     onClick={() => selectMovie(m)}
                     className="flex items-center gap-3 bg-[#1e293b] hover:bg-gray-800 p-2 rounded cursor-pointer border border-transparent hover:border-red-500"
                   >
-                    <img src={`https://image.tmdb.org/t/p/w92${m.poster_path}`} className="w-10 h-14 object-cover rounded" />
+                    {m.poster_path ? (
+                      <img src={`https://image.tmdb.org/t/p/w92${m.poster_path}`} className="w-10 h-14 object-cover rounded" />
+                    ) : (
+                      <div className="w-10 h-14 bg-gray-700 rounded flex items-center justify-center text-xs">No Pic</div>
+                    )}
                     <div>
                       <div className="font-bold text-sm">{m.title}</div>
                       <div className="text-xs text-gray-400">{m.release_date ? m.release_date.split("-")[0] : ""}</div>
@@ -203,7 +227,7 @@ export default function MoinuFlixStudio() {
             )}
           </div>
 
-          {/* Step 3: Raw Filename Parser (Auto-Fill Feature) */}
+          {/* Step 3: Raw Filename Parser */}
           <div className="bg-[#0f172a] border border-cyan-900/60 p-4 rounded-xl">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-xs font-bold text-cyan-400 uppercase tracking-widest">⚡ Raw File Rename Parser (Auto-Fill)</h2>
@@ -228,14 +252,13 @@ export default function MoinuFlixStudio() {
         <div className="lg:col-span-7 space-y-6">
           {selectedMovie ? (
             <div className="bg-[#0f172a] border border-gray-800 p-5 rounded-xl space-y-4">
-              {/* Movie Header Card */}
               <div className="flex gap-4 items-start">
                 <img src={selectedMovie.poster} className="w-24 h-36 object-cover rounded-lg border border-gray-700 shadow-md" />
                 <div className="space-y-1">
                   <h1 className="text-xl font-black text-white">{selectedMovie.title}</h1>
                   <div className="flex flex-wrap gap-2 text-xs text-gray-400">
                     <span className="bg-red-950 text-red-400 px-2 py-0.5 rounded font-bold border border-red-800">
-                      {selectedMovie.certification || "UA"}
+                      {selectedMovie.certification}
                     </span>
                     <span>{selectedMovie.year}</span>
                     <span>• {selectedMovie.runtime} min</span>
