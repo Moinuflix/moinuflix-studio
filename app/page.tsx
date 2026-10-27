@@ -28,7 +28,6 @@ export default function MoinuFlixCinemaStudio() {
   const [movie, setMovie] = useState<any>(null);
   const [rawFilename, setRawFilename] = useState("");
 
-  // Category State
   const [category, setCategory] = useState("Hollywood (English)");
   const [selectedLangs, setSelectedLangs] = useState<string[]>(["English"]);
 
@@ -51,7 +50,7 @@ export default function MoinuFlixCinemaStudio() {
     {
       id: "ver-1",
       language: "English",
-      dubbed: "Original Audio",
+      dubbed: "Original Track",
       quality: "1080p",
       source: "BluRay",
       codec: "x265",
@@ -77,27 +76,18 @@ export default function MoinuFlixCinemaStudio() {
     setLoadingLibrary(false);
   };
 
-  // Determine Category Automatically based on TMDB Language
   const detectCategory = (lang: string) => {
     switch (lang) {
-      case "en":
-        return "Hollywood (English)";
-      case "hi":
-        return "Bollywood (Hindi)";
-      case "ta":
-        return "Kollywood (Tamil)";
-      case "te":
-        return "Tollywood (Telugu)";
-      case "ml":
-        return "Mollywood (Malayalam)";
-      case "kn":
-        return "Sandalwood (Kannada)";
-      default:
-        return "Hollywood (English)";
+      case "en": return "Hollywood (English)";
+      case "hi": return "Bollywood (Hindi)";
+      case "ta": return "Kollywood (Tamil)";
+      case "te": return "Tollywood (Telugu)";
+      case "ml": return "Mollywood (Malayalam)";
+      case "kn": return "Sandalwood (Kannada)";
+      default: return "Hollywood (English)";
     }
   };
 
-  // ADVANCED PARSER WITH INDEPENDENT AUDIO SPECS PER LANGUAGE
   const parseFilename = () => {
     if (!rawFilename) return;
     const fn = rawFilename.toLowerCase();
@@ -134,7 +124,6 @@ export default function MoinuFlixCinemaStudio() {
     const sizeMatch = rawFilename.match(/(\d+(\.\d+)?)\s*(gb|mb)/i);
     if (sizeMatch) sz = `${sizeMatch[1]} ${sizeMatch[3].toUpperCase()}`;
 
-    // Detect Languages Present
     const detected: string[] = [];
     if (fn.includes("english") || fn.includes("eng")) detected.push("English");
     if (fn.includes("hindi")) detected.push("Hindi");
@@ -160,14 +149,12 @@ export default function MoinuFlixCinemaStudio() {
     });
 
     const masterStream = versions[0]?.stream_url || "";
-    
-    // BUILD CLEAN INDEPENDENT VERSIONS FOR EACH LANGUAGE
+    const origLangName = movie?.original_language === "en" ? "English" : movie?.original_language === "ta" ? "Tamil" : "Hindi";
+
     const newVersions = finalLangs.map((lang, idx) => {
       let verAudio = "Dolby Digital";
       let verChannels = "5.1";
       let verDub = "";
-
-      const origLangName = movie?.original_language === "en" ? "English" : movie?.original_language === "ta" ? "Tamil" : "Hindi";
 
       if (lang === origLangName) {
         verDub = "Original Track";
@@ -220,6 +207,19 @@ export default function MoinuFlixCinemaStudio() {
     try {
       const res = await fetch(`/api/fetch-meta?id=${tmdbId}`);
       const data = await res.json();
+      
+      // Ensure complete artwork object exists
+      data.artwork = {
+        poster: data.artwork?.poster || "",
+        fanart: data.artwork?.fanart || "",
+        clearlogo: data.artwork?.clearlogo || "",
+        banner: data.artwork?.banner || "",
+        clearart: data.artwork?.clearart || "",
+        thumbnail: data.artwork?.thumbnail || "",
+        landscape: data.artwork?.landscape || "",
+        character_art: data.artwork?.character_art || [],
+      };
+
       setMovie(data);
       const cat = detectCategory(data.original_language);
       setCategory(cat);
@@ -228,6 +228,17 @@ export default function MoinuFlixCinemaStudio() {
       alert("Metadata load failed: " + err.message);
     }
     setLoading(false);
+  };
+
+  const updateArtworkField = (field: string, value: string) => {
+    if (!movie) return;
+    setMovie({
+      ...movie,
+      artwork: {
+        ...movie.artwork,
+        [field]: value,
+      },
+    });
   };
 
   const toggleLanguage = (lang: string) => {
@@ -273,7 +284,7 @@ export default function MoinuFlixCinemaStudio() {
       alert("Pehle movie select karein!");
       return;
     }
-    setCommitStatus({ text: "Saving & committing to resources/data...", success: true });
+    setCommitStatus({ text: "Saving artwork & committing to resources/data...", success: true });
     try {
       const res = await fetch("/api/movies", {
         method: "POST",
@@ -283,7 +294,7 @@ export default function MoinuFlixCinemaStudio() {
           specs,
           versions,
           category,
-          available_languages: selectedLangs
+          available_languages: selectedLangs,
         }),
       });
       const data = await res.json();
@@ -306,7 +317,7 @@ export default function MoinuFlixCinemaStudio() {
       {/* Header */}
       <header className="flex flex-wrap items-center justify-between border-b border-gray-800 pb-4 mb-6 gap-4">
         <div className="flex items-center gap-3">
-          <span className="bg-red-600 text-white font-black px-3.5 py-1 rounded text-lg tracking-wider">
+          <span className="bg-red-600 text-white font-black px-3.5 py-1 rounded text-lg tracking-wider shadow-md">
             MOINUFLIX
           </span>
           <span className="text-sm font-semibold tracking-widest text-gray-400">
@@ -342,7 +353,7 @@ export default function MoinuFlixCinemaStudio() {
         </div>
 
         <span className="text-xs bg-cyan-950/80 text-cyan-400 border border-cyan-800 px-3 py-1 rounded-full font-bold shadow-sm">
-          ⚡ Multi-Category & Audio-Separated Engine
+          ⚡ Full Artwork & Multi-Audio Engine
         </span>
       </header>
 
@@ -424,11 +435,11 @@ export default function MoinuFlixCinemaStudio() {
             </div>
           </div>
 
-          {/* Right Column: Specs & Playback Versions */}
+          {/* Right Column: Complete Details & Artwork Studio */}
           <div className="lg:col-span-7 space-y-6">
             {movie ? (
               <div className="bg-[#0f172a] border border-gray-800 p-5 rounded-xl space-y-5 shadow-2xl relative">
-                {/* Header Backdrop */}
+                {/* Header Spotlight Backdrop */}
                 <div className="relative rounded-lg overflow-hidden border border-gray-700 p-4 min-h-[140px] flex items-end">
                   {movie.artwork?.fanart && (
                     <img
@@ -441,8 +452,8 @@ export default function MoinuFlixCinemaStudio() {
 
                   <div className="relative z-10 flex gap-4 items-center">
                     <img
-                      src={movie.artwork?.poster}
-                      className="w-20 h-28 object-cover rounded shadow-lg border border-gray-600"
+                      src={movie.artwork?.poster || "/placeholder.png"}
+                      className="w-20 h-28 object-cover rounded shadow-lg border border-gray-600 bg-gray-800"
                       alt={movie.title}
                     />
                     <div className="space-y-1">
@@ -469,6 +480,155 @@ export default function MoinuFlixCinemaStudio() {
                         </span>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                {/* SECTION 5: COMPLETE ARTWORK, PROMOTIONAL & TRAILER STUDIO */}
+                <div className="bg-[#0a0f1d] p-4 rounded-xl border border-gray-800 space-y-4">
+                  <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+                    <div>
+                      <h3 className="text-xs font-bold text-cyan-400 uppercase tracking-widest">
+                        🖼️ Section 5: Promotional Artwork, ClearArt & Trailer
+                      </h3>
+                      <p className="text-[10px] text-gray-500">
+                        Live visual previews with manual URL correction. Blank if not found.
+                      </p>
+                    </div>
+                    <span className="text-[10px] bg-gray-800 text-gray-300 px-2 py-0.5 rounded font-mono">
+                      Fanart.tv & TMDB
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    {/* 1. ClearLogo (Transparent Title) */}
+                    <div className="bg-[#1e293b]/70 p-2.5 rounded-lg border border-gray-700/80 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-gray-300">1. ClearLogo (Transparent Title)</label>
+                        {movie.artwork?.clearlogo && (
+                          <span className="text-[9px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.2 rounded font-bold">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <div className="h-16 bg-[#070b14] rounded flex items-center justify-center p-2 border border-gray-800">
+                        {movie.artwork?.clearlogo ? (
+                          <img src={movie.artwork.clearlogo} alt="ClearLogo" className="max-h-12 max-w-full object-contain" />
+                        ) : (
+                          <span className="text-[10px] text-gray-600">No ClearLogo (Blank)</span>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={movie.artwork?.clearlogo || ""}
+                        onChange={(e) => updateArtworkField("clearlogo", e.target.value)}
+                        placeholder="https://assets.fanart.tv/fanart/movies/.../logo.png"
+                        className="w-full bg-[#0f172a] border border-gray-700 px-2.5 py-1.5 rounded text-[11px] text-yellow-300 font-mono"
+                      />
+                    </div>
+
+                    {/* 2. ClearArt (Character Cutout) */}
+                    <div className="bg-[#1e293b]/70 p-2.5 rounded-lg border border-gray-700/80 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-gray-300">2. ClearArt (Transparent Character)</label>
+                        {movie.artwork?.clearart && (
+                          <span className="text-[9px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.2 rounded font-bold">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <div className="h-16 bg-[#070b14] rounded flex items-center justify-center p-2 border border-gray-800">
+                        {movie.artwork?.clearart ? (
+                          <img src={movie.artwork.clearart} alt="ClearArt" className="max-h-14 max-w-full object-contain" />
+                        ) : (
+                          <span className="text-[10px] text-gray-600">No ClearArt (Blank)</span>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={movie.artwork?.clearart || ""}
+                        onChange={(e) => updateArtworkField("clearart", e.target.value)}
+                        placeholder="https://assets.fanart.tv/.../clearart.png"
+                        className="w-full bg-[#0f172a] border border-gray-700 px-2.5 py-1.5 rounded text-[11px] text-cyan-300 font-mono"
+                      />
+                    </div>
+
+                    {/* 3. Wide Promotional Banner */}
+                    <div className="bg-[#1e293b]/70 p-2.5 rounded-lg border border-gray-700/80 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-gray-300">3. Promotional Banner (Wide 1000x185)</label>
+                        {movie.artwork?.banner && (
+                          <span className="text-[9px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.2 rounded font-bold">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <div className="h-14 bg-[#070b14] rounded flex items-center justify-center overflow-hidden border border-gray-800">
+                        {movie.artwork?.banner ? (
+                          <img src={movie.artwork.banner} alt="Banner" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] text-gray-600">No Banner Available (Blank)</span>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={movie.artwork?.banner || ""}
+                        onChange={(e) => updateArtworkField("banner", e.target.value)}
+                        placeholder="https://assets.fanart.tv/.../banner.jpg"
+                        className="w-full bg-[#0f172a] border border-gray-700 px-2.5 py-1.5 rounded text-[11px] text-gray-300 font-mono"
+                      />
+                    </div>
+
+                    {/* 4. Landscape / Thumbnail Art */}
+                    <div className="bg-[#1e293b]/70 p-2.5 rounded-lg border border-gray-700/80 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-gray-300">4. Thumbnail / Landscape (16:9)</label>
+                        {movie.artwork?.landscape && (
+                          <span className="text-[9px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.2 rounded font-bold">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <div className="h-14 bg-[#070b14] rounded flex items-center justify-center overflow-hidden border border-gray-800">
+                        {movie.artwork?.landscape ? (
+                          <img src={movie.artwork.landscape} alt="Landscape" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] text-gray-600">No Landscape (Blank)</span>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={movie.artwork?.landscape || ""}
+                        onChange={(e) => updateArtworkField("landscape", e.target.value)}
+                        placeholder="https://image.tmdb.org/t/p/... or Fanart thumb"
+                        className="w-full bg-[#0f172a] border border-gray-700 px-2.5 py-1.5 rounded text-[11px] text-gray-300 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 5. Official YouTube Trailer URL */}
+                  <div className="bg-[#1e293b]/70 p-2.5 rounded-lg border border-gray-700/80 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-red-400 flex items-center gap-1.5">
+                        ▶ Official YouTube Trailer URL
+                      </label>
+                      {movie.trailer && (
+                        <a
+                          href={movie.trailer}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[10px] text-cyan-400 underline hover:text-cyan-300"
+                        >
+                          Test Play Trailer ↗
+                        </a>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      value={movie.trailer || ""}
+                      onChange={(e) => setMovie({ ...movie, trailer: e.target.value })}
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      className="w-full bg-[#0f172a] border border-gray-700 px-2.5 py-1.5 rounded text-[11px] text-red-300 font-mono"
+                    />
                   </div>
                 </div>
 
@@ -510,25 +670,6 @@ export default function MoinuFlixCinemaStudio() {
                       ))}
                     </div>
                   </div>
-                </div>
-
-                {/* Kodi Logo Direct URL Field */}
-                <div className="bg-[#0a0f1d] p-3 rounded-lg border border-gray-800">
-                  <label className="text-[11px] font-bold text-gray-400 block mb-1">
-                    Kodi ClearLogo URL (Fanart.tv)
-                  </label>
-                  <input
-                    type="text"
-                    value={movie.artwork?.clearlogo || ""}
-                    onChange={(e) =>
-                      setMovie({
-                        ...movie,
-                        artwork: { ...movie.artwork, clearlogo: e.target.value },
-                      })
-                    }
-                    placeholder="https://assets.fanart.tv/fanart/movies/..."
-                    className="w-full bg-[#1e293b] border border-gray-700 px-3 py-1.5 rounded text-xs text-yellow-400 font-mono"
-                  />
                 </div>
 
                 {/* Master Technical Parameters */}
@@ -619,7 +760,6 @@ export default function MoinuFlixCinemaStudio() {
                         className="bg-[#1e293b] p-3 rounded-lg border border-gray-700 space-y-2"
                       >
                         <div className="flex flex-wrap items-center gap-2">
-                          {/* Language Dropdown */}
                           <select
                             value={ver.language}
                             onChange={(e) => updateVersion(idx, "language", e.target.value)}
@@ -633,7 +773,6 @@ export default function MoinuFlixCinemaStudio() {
                             <option>Kannada</option>
                           </select>
 
-                          {/* Quality Dropdown */}
                           <select
                             value={ver.quality}
                             onChange={(e) => updateVersion(idx, "quality", e.target.value)}
@@ -644,7 +783,6 @@ export default function MoinuFlixCinemaStudio() {
                             <option>720p</option>
                           </select>
 
-                          {/* Source Dropdown */}
                           <select
                             value={ver.source}
                             onChange={(e) => updateVersion(idx, "source", e.target.value)}
@@ -660,7 +798,6 @@ export default function MoinuFlixCinemaStudio() {
                             <option>WEB-DL</option>
                           </select>
 
-                          {/* Separate Audio Format Dropdown */}
                           <select
                             value={ver.audio}
                             onChange={(e) => updateVersion(idx, "audio", e.target.value)}
@@ -675,7 +812,6 @@ export default function MoinuFlixCinemaStudio() {
                             <option>AAC</option>
                           </select>
 
-                          {/* Channels Dropdown */}
                           <select
                             value={ver.channels || "5.1"}
                             onChange={(e) => updateVersion(idx, "channels", e.target.value)}
@@ -686,7 +822,6 @@ export default function MoinuFlixCinemaStudio() {
                             <option>2.0</option>
                           </select>
 
-                          {/* Dub Text */}
                           <input
                             type="text"
                             value={ver.dubbed || ""}
@@ -695,7 +830,6 @@ export default function MoinuFlixCinemaStudio() {
                             className="bg-[#0f172a] border border-gray-600 px-2 py-1 rounded text-xs text-yellow-300 w-32"
                           />
 
-                          {/* Size */}
                           <input
                             type="text"
                             value={ver.size || specs.fileSize}
