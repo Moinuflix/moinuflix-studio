@@ -118,3 +118,273 @@ def fetch_tmdb_metadata(query, year=None):
             "imdb": None
         }
     }
+
+def run_full_auto_sync():
+    print("--- 1. SCANNING DRIVE FOR RAW FILES ---")
+    res = subprocess.run(["rclone", "lsjson", "gdrive:", "-R", "--files-only"], stdout=subprocess.PIPE, text=True)
+    drive_files = json.loads(res.stdout) if res.stdout else []
+    print(f"Total raw files in Google Drive: {len(drive_files)}")
+
+    # Load Existing Catalog to skip duplicates
+    data_dir = "resources/data"
+    catalog_path = f"{data_dir}/catalog.json"
+    os.makedirs(f"{data_dir}/chunks", exist_ok=True)
+
+    catalog = {"movies": []}
+    if os.path.exists(catalog_path):
+        with open(catalog_path, "r", encoding="utf-8") as f:
+            catalog = json.load(f)
+
+    existing_ids = {str(m.get("id")) for m in catalog.get("movies", [])}
+    
+    series_list = []
+    movies_processed = 0
+
+    for file in drive_files:
+        path = file.get("Path", "")
+        fid = file.get("ID", "")
+        fbytes = file.get("Size", 0)
+
+        if not path.lower().endswith(('.mkv', '.mp4', '.avi', '.ts')):
+            continue
+
+        # Split Series vs Movies
+        if is_series_file(path):
+            series_list.append({"file": path, "id": fid, "size_bytes": fbytes})
+            continue
+
+        # Movie Match
+        title, year = extract_clean_title(path)
+        print(f"\n🔍 Auto Matching Movie: {title} ({year})")
+        meta = fetch_tmdb_metadata(title, year)
+        if not meta:
+            print(f"⚠️ Could not match TMDB for: {title}")
+            continue
+
+        if meta["id"] in existing_ids:
+            print(f"⏩ Movie already in catalog: {meta['title']}")
+            continue
+
+        specs = parse_specs(path, fbytes)
+        stream_url = f"{STREAM_WORKER_BASE}{fid}|User-Agent=Kodi-MoinuTV-PrivatePlayer/1.0"
+
+        # Determine target chunk (< 50 movies)
+        chunk_num = 1
+        target_chunk_rel = ""
+        while True:
+            candidate_rel = f"chunks/chunk_{str(chunk_num).padStart(2, '0') if hasattr(str, 'padStart') else f'{chunk_num:02d}'}.json"
+            full_chunk_path = f"{data_dir}/{candidate_rel}"
+            if not os.path.exists(full_chunk_path):
+                target_chunk_rel = candidate_rel
+                break
+            with open(full_chunk_path, "r", encoding="utf-8") as cf:
+                chunk_data = json.load(cf)
+                if len(chunk_data.get("movies", [])) < 50:
+                    target_chunk_rel = candidate_rel
+                    break
+            chunk_num += 1
+
+        full_chunk_path = f"{data_dir}/{target_chunk_rel}"
+        chunk_data = {"movies": []}
+        if os.path.exists(full_chunk_path):
+            with open(full_chunk_path, "r", encoding="utf-8") as cf:
+                chunk_data = json.load(cf)
+
+        # Build Version & Full Record
+        version_obj = {
+            "id": fid,
+            "language": meta.get("original_language", "English").title(),
+            "quality": specs["quality"],
+            "source": specs["source"],
+            "codec": specs["codec"],
+            "audio": specs["audio"],
+            "channels": specs["channels"],
+            "size": specs["size"],
+            "stream_url": stream_url
+        }
+
+        full_record = {
+            **meta,
+            "stream_url": stream_url,
+            "specs": specs,
+            "versions": [version_obj]
+        }
+        chunk_data.setdefault("movies", []).append(full_record)
+        with open(full_chunk_path, "w", encoding="utf-8") as cf:
+            json.dump(chunk_data, cf, indent=2, ensure_ascii=False)
+
+        # Update Catalog
+        catalog_summary = {
+            "id": meta["id"],
+            "title": meta["title"],
+            "year": meta["year"],
+            "poster": meta["artwork"]["poster"],
+            "fanart": meta["artwork"]["fanart"],
+            "logo": meta["artwork"].get("clearlogo", ""),
+            "rating": meta["ratings"]["tmdb"],
+            "original_language": meta["original_language"],
+            "chunk_file": f"{data_dir}/{target_chunk_rel}",
+            "primary_stream_url": stream_url,
+            "available_languages": [meta.get("original_language", "en")],
+            "version_count": 1,
+            "available_versions": [{
+                "language": meta.get("original_language", "en"),
+                "quality": specs["quality"],
+                "source": specs["source"],
+                "codec": specs["codec"],
+                "audio": specs["audio"],
+                "channels": specs["channels"],
+                "size": specs["size"]
+            }]
+        }
+        catalog.setdefault("movies", []).append(catalog_summary)
+        existing_ids.add(meta["id"])
+        movies_processed += 1
+        print(f"✅ Added {meta['title']} to {target_chunk_rel} & catalog.json")
+
+    # Save Catalog and Series Inbox
+    with open(catalog_path, "w", encoding="utf-8") as f:
+        json.dump(catalog, f, indent=2, ensure_ascii=False)
+
+    with open("series_inbox.json", "w", encoding="utf-8") as f:
+        json.dump(series_list, f, indent=2, ensure_ascii=False)
+
+    print(f"\n🎉 Finished: Processed {movies_processed} movies into Catalog & Chunks! Series split into series_inbox.json ({len(series_list)} items).")
+
+if __name__ == "__main__":
+    run_full_auto_sync()
+
+def run_full_auto_sync():
+    print("--- 1. SCANNING DRIVE FOR RAW FILES ---")
+    res = subprocess.run(["rclone", "lsjson", "gdrive:", "-R", "--files-only"], stdout=subprocess.PIPE, text=True)
+    drive_files = json.loads(res.stdout) if res.stdout else []
+    print(f"Total raw files in Google Drive: {len(drive_files)}")
+
+    # Load Existing Catalog to skip duplicates
+    data_dir = "resources/data"
+    catalog_path = f"{data_dir}/catalog.json"
+    os.makedirs(f"{data_dir}/chunks", exist_ok=True)
+
+    catalog = {"movies": []}
+    if os.path.exists(catalog_path):
+        with open(catalog_path, "r", encoding="utf-8") as f:
+            catalog = json.load(f)
+
+    existing_ids = {str(m.get("id")) for m in catalog.get("movies", [])}
+    
+    series_list = []
+    movies_processed = 0
+
+    for file in drive_files:
+        path = file.get("Path", "")
+        fid = file.get("ID", "")
+        fbytes = file.get("Size", 0)
+
+        if not path.lower().endswith(('.mkv', '.mp4', '.avi', '.ts')):
+            continue
+
+        # Split Series vs Movies
+        if is_series_file(path):
+            series_list.append({"file": path, "id": fid, "size_bytes": fbytes})
+            continue
+
+        # Movie Match
+        title, year = extract_clean_title(path)
+        print(f"\n🔍 Auto Matching Movie: {title} ({year})")
+        meta = fetch_tmdb_metadata(title, year)
+        if not meta:
+            print(f"⚠️ Could not match TMDB for: {title}")
+            continue
+
+        if meta["id"] in existing_ids:
+            print(f"⏩ Movie already in catalog: {meta['title']}")
+            continue
+
+        specs = parse_specs(path, fbytes)
+        stream_url = f"{STREAM_WORKER_BASE}{fid}|User-Agent=Kodi-MoinuTV-PrivatePlayer/1.0"
+
+        # Determine target chunk (< 50 movies)
+        chunk_num = 1
+        target_chunk_rel = ""
+        while True:
+            candidate_rel = f"chunks/chunk_{str(chunk_num).padStart(2, '0') if hasattr(str, 'padStart') else f'{chunk_num:02d}'}.json"
+            full_chunk_path = f"{data_dir}/{candidate_rel}"
+            if not os.path.exists(full_chunk_path):
+                target_chunk_rel = candidate_rel
+                break
+            with open(full_chunk_path, "r", encoding="utf-8") as cf:
+                chunk_data = json.load(cf)
+                if len(chunk_data.get("movies", [])) < 50:
+                    target_chunk_rel = candidate_rel
+                    break
+            chunk_num += 1
+
+        full_chunk_path = f"{data_dir}/{target_chunk_rel}"
+        chunk_data = {"movies": []}
+        if os.path.exists(full_chunk_path):
+            with open(full_chunk_path, "r", encoding="utf-8") as cf:
+                chunk_data = json.load(cf)
+
+        # Build Version & Full Record
+        version_obj = {
+            "id": fid,
+            "language": meta.get("original_language", "English").title(),
+            "quality": specs["quality"],
+            "source": specs["source"],
+            "codec": specs["codec"],
+            "audio": specs["audio"],
+            "channels": specs["channels"],
+            "size": specs["size"],
+            "stream_url": stream_url
+        }
+
+        full_record = {
+            **meta,
+            "stream_url": stream_url,
+            "specs": specs,
+            "versions": [version_obj]
+        }
+        chunk_data.setdefault("movies", []).append(full_record)
+        with open(full_chunk_path, "w", encoding="utf-8") as cf:
+            json.dump(chunk_data, cf, indent=2, ensure_ascii=False)
+
+        # Update Catalog
+        catalog_summary = {
+            "id": meta["id"],
+            "title": meta["title"],
+            "year": meta["year"],
+            "poster": meta["artwork"]["poster"],
+            "fanart": meta["artwork"]["fanart"],
+            "logo": meta["artwork"].get("clearlogo", ""),
+            "rating": meta["ratings"]["tmdb"],
+            "original_language": meta["original_language"],
+            "chunk_file": f"{data_dir}/{target_chunk_rel}",
+            "primary_stream_url": stream_url,
+            "available_languages": [meta.get("original_language", "en")],
+            "version_count": 1,
+            "available_versions": [{
+                "language": meta.get("original_language", "en"),
+                "quality": specs["quality"],
+                "source": specs["source"],
+                "codec": specs["codec"],
+                "audio": specs["audio"],
+                "channels": specs["channels"],
+                "size": specs["size"]
+            }]
+        }
+        catalog.setdefault("movies", []).append(catalog_summary)
+        existing_ids.add(meta["id"])
+        movies_processed += 1
+        print(f"✅ Added {meta['title']} to {target_chunk_rel} & catalog.json")
+
+    # Save Catalog and Series Inbox
+    with open(catalog_path, "w", encoding="utf-8") as f:
+        json.dump(catalog, f, indent=2, ensure_ascii=False)
+
+    with open("series_inbox.json", "w", encoding="utf-8") as f:
+        json.dump(series_list, f, indent=2, ensure_ascii=False)
+
+    print(f"\n🎉 Finished: Processed {movies_processed} movies into Catalog & Chunks! Series split into series_inbox.json ({len(series_list)} items).")
+
+if __name__ == "__main__":
+    run_full_auto_sync()
