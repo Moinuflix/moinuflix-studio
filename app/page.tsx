@@ -9,40 +9,45 @@ const CATEGORIES = [
   "Mollywood (Malayalam)",
   "Sandalwood (Kannada)",
   "Animation / Kids",
-  "World Cinema"
+  "World Cinema",
 ];
 
 const ALL_LANGUAGES = ["English", "Hindi", "Tamil", "Telugu", "Malayalam", "Kannada"];
 
-export default function MoinuFlixCinemaStudio() {
-  const [activeTab, setActiveTab] = useState<"editor" | "library" | "json">("editor");
+export default function MoinuFlixAdminStudio() {
+  const [activeTab, setActiveTab] = useState<"movies" | "editor" | "json">("editor");
 
+  // Search & Loading
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [loadingMeta, setLoadingMeta] = useState(false);
   const [commitStatus, setCommitStatus] = useState<{ text: string; success: boolean } | null>(null);
 
+  // Library State
   const [library, setLibrary] = useState<any[]>([]);
+  const [libSearch, setLibSearch] = useState("");
   const [loadingLibrary, setLoadingLibrary] = useState(false);
 
+  // Active Movie State
   const [movie, setMovie] = useState<any>(null);
-  const [rawFilename, setRawFilename] = useState("");
-
   const [category, setCategory] = useState("Hollywood (English)");
   const [selectedLangs, setSelectedLangs] = useState<string[]>(["English"]);
+  const [rawFilename, setRawFilename] = useState("");
 
-  // Master Specs
+  // Technical Specs
   const [specs, setSpecs] = useState({
     resolution: "1080p",
     source: "BluRay",
-    enhancement: "DS4K",
+    enhancement: "Standard",
     colorDepth: "10bit",
     hdr: "SDR",
     codec: "x265",
     audioCodec: "Dolby Atmos",
-    audioBitrate: "448 Kbps",
     channels: "5.1",
     fileSize: "5 GB",
+    format: "MKV",
+    subtitles: ["ESub"],
   });
 
   // Playback Versions
@@ -88,8 +93,62 @@ export default function MoinuFlixCinemaStudio() {
     }
   };
 
+  const handleSearch = async () => {
+    if (!query.trim()) return;
+    setSearching(true);
+    setCommitStatus(null);
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      setSearchResults(data.results || []);
+    } catch (err: any) {
+      alert("Search failed: " + err.message);
+    }
+    setSearching(false);
+  };
+
+  const handleSelectMovie = async (tmdbId: number) => {
+    setLoadingMeta(true);
+    setCommitStatus(null);
+    try {
+      const res = await fetch(`/api/fetch-meta?id=${tmdbId}`);
+      const data = await res.json();
+      if (data.error) {
+        alert(data.error);
+      } else {
+        setMovie(data);
+        const cat = detectCategory(data.original_language);
+        setCategory(cat);
+        const initialLang =
+          data.original_language === "en" ? "English" :
+          data.original_language === "ta" ? "Tamil" :
+          data.original_language === "te" ? "Telugu" :
+          data.original_language === "hi" ? "Hindi" : "English";
+        setSelectedLangs([initialLang]);
+        setVersions([
+          {
+            id: `ver-${Date.now()}`,
+            language: initialLang,
+            dubbed: "Original Track",
+            quality: specs.resolution,
+            source: specs.source,
+            codec: specs.codec,
+            audio: specs.audioCodec,
+            channels: specs.channels,
+            size: specs.fileSize,
+            linkType: "gdrive",
+            stream_url: "",
+          },
+        ]);
+      }
+    } catch (err: any) {
+      alert("Metadata load error: " + err.message);
+    }
+    setLoadingMeta(false);
+  };
+
   const parseFilename = () => {
-    if (!rawFilename) return;
+    if (!rawFilename.trim()) return;
     const fn = rawFilename.toLowerCase();
 
     let res = "1080p";
@@ -132,26 +191,28 @@ export default function MoinuFlixCinemaStudio() {
     if (fn.includes("malayalam")) detected.push("Malayalam");
     if (fn.includes("kannada")) detected.push("Kannada");
 
-    const finalLangs = detected.length > 0 ? detected : (movie?.original_language === "en" ? ["English"] : ["Hindi"]);
-    setSelectedLangs(finalLangs);
+    const activeLangs = detected.length > 0 ? detected : selectedLangs;
+    setSelectedLangs(activeLangs);
 
     setSpecs({
+      ...specs,
       resolution: res,
       source: src,
       enhancement: enh,
       colorDepth: col,
       hdr: hdr,
       codec: cdc,
-      audioCodec: "Dolby Atmos",
-      audioBitrate: "448 Kbps",
-      channels: "5.1",
       fileSize: sz,
     });
 
     const masterStream = versions[0]?.stream_url || "";
-    const origLangName = movie?.original_language === "en" ? "English" : movie?.original_language === "ta" ? "Tamil" : "Hindi";
+    const origLangName =
+      movie?.original_language === "en" ? "English" :
+      movie?.original_language === "ta" ? "Tamil" :
+      movie?.original_language === "te" ? "Telugu" :
+      movie?.original_language === "hi" ? "Hindi" : "English";
 
-    const newVersions = finalLangs.map((lang, idx) => {
+    const newVersions = activeLangs.map((lang, idx) => {
       let verAudio = "Dolby Digital";
       let verChannels = "5.1";
       let verDub = "";
@@ -164,13 +225,13 @@ export default function MoinuFlixCinemaStudio() {
         else if (fn.includes("aac")) { verAudio = "AAC"; verChannels = "5.1"; }
       } else {
         verDub = `${lang} Dub`;
-        if (fn.includes("ddp") || fn.includes("dd 5.1") || fn.includes("eac3")) { verAudio = "Dolby Digital Plus"; verChannels = "5.1"; }
+        if (fn.includes("ddp") || fn.includes("eac3")) { verAudio = "Dolby Digital Plus"; verChannels = "5.1"; }
         else if (fn.includes("aac")) { verAudio = "AAC"; verChannels = "5.1"; }
         else { verAudio = "Dolby Digital"; verChannels = "5.1"; }
       }
 
       return {
-        id: `ver-${idx + 1}`,
+        id: `ver-${idx + 1}-${Date.now()}`,
         language: lang,
         dubbed: verDub,
         quality: res,
@@ -187,56 +248,13 @@ export default function MoinuFlixCinemaStudio() {
     setVersions(newVersions);
   };
 
-  const handleSearch = async () => {
-    if (!query) return;
-    setLoading(true);
-    setCommitStatus(null);
-    try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-      const data = await res.json();
-      setSearchResults(data.results || []);
-    } catch (err: any) {
-      alert("Search failed: " + err.message);
-    }
-    setLoading(false);
-  };
-
-  const handleSelectMovie = async (tmdbId: number) => {
-    setLoading(true);
-    setCommitStatus(null);
-    try {
-      const res = await fetch(`/api/fetch-meta?id=${tmdbId}`);
-      const data = await res.json();
-      
-      // Ensure complete artwork object exists
-      data.artwork = {
-        poster: data.artwork?.poster || "",
-        fanart: data.artwork?.fanart || "",
-        clearlogo: data.artwork?.clearlogo || "",
-        banner: data.artwork?.banner || "",
-        clearart: data.artwork?.clearart || "",
-        thumbnail: data.artwork?.thumbnail || "",
-        landscape: data.artwork?.landscape || "",
-        character_art: data.artwork?.character_art || [],
-      };
-
-      setMovie(data);
-      const cat = detectCategory(data.original_language);
-      setCategory(cat);
-      if (rawFilename) parseFilename();
-    } catch (err: any) {
-      alert("Metadata load failed: " + err.message);
-    }
-    setLoading(false);
-  };
-
-  const updateArtworkField = (field: string, value: string) => {
+  const updateArtworkField = (field: string, val: string) => {
     if (!movie) return;
     setMovie({
       ...movie,
       artwork: {
         ...movie.artwork,
-        [field]: value,
+        [field]: val,
       },
     });
   };
@@ -254,7 +272,7 @@ export default function MoinuFlixCinemaStudio() {
     setVersions([
       ...versions,
       {
-        id: `ver-${versions.length + 1}`,
+        id: `ver-${Date.now()}`,
         language: "Hindi",
         dubbed: "Hindi Dub",
         quality: specs.resolution,
@@ -270,7 +288,13 @@ export default function MoinuFlixCinemaStudio() {
   };
 
   const removeVersionRow = (idx: number) => {
-    setVersions(versions.filter((_, i) => i !== idx));
+    if (versions.length === 1) {
+      alert("At least one version must be retained.");
+      return;
+    }
+    if (confirm("Are you sure you want to delete this playback version?")) {
+      setVersions(versions.filter((_, i) => i !== idx));
+    }
   };
 
   const updateVersion = (idx: number, field: string, val: string) => {
@@ -281,10 +305,11 @@ export default function MoinuFlixCinemaStudio() {
 
   const handleCommit = async () => {
     if (!movie) {
-      alert("Pehle movie select karein!");
+      alert("Please select a movie before committing.");
       return;
     }
-    setCommitStatus({ text: "Saving artwork & committing to resources/data...", success: true });
+
+    setCommitStatus({ text: "Validating & saving to GitHub resources/data...", success: true });
     try {
       const res = await fetch("/api/movies", {
         method: "POST",
@@ -297,50 +322,73 @@ export default function MoinuFlixCinemaStudio() {
           available_languages: selectedLangs,
         }),
       });
+
       const data = await res.json();
       if (data.success) {
         setCommitStatus({
-          text: `🎉 Successfully synced to ${data.chunkPath} & catalog.json!`,
+          text: `🎉 Synced cleanly to ${data.chunkPath} & catalog.json! (Commit: ${data.commitSha.substring(0, 7)})`,
           success: true,
         });
         fetchLibrary();
       } else {
-        setCommitStatus({ text: "Failed: " + data.error, success: false });
+        setCommitStatus({ text: `❌ Save Failed: ${data.error}`, success: false });
       }
     } catch (err: any) {
-      setCommitStatus({ text: "Commit Error: " + err.message, success: false });
+      setCommitStatus({ text: `❌ Network Error: ${err.message}`, success: false });
     }
   };
 
+  const handleDeleteMovie = async (id: string, title: string) => {
+    if (!confirm(`Permanently delete "${title}" from catalog and chunks?`)) return;
+    try {
+      const res = await fetch(`/api/movies?id=${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        alert(`"${title}" deleted successfully.`);
+        fetchLibrary();
+      } else {
+        alert("Delete failed: " + data.error);
+      }
+    } catch (err: any) {
+      alert("Delete failed: " + err.message);
+    }
+  };
+
+  const filteredLibrary = library.filter((m) =>
+    m.title?.toLowerCase().includes(libSearch.toLowerCase()) ||
+    m.year?.toString().includes(libSearch) ||
+    m.category?.toLowerCase().includes(libSearch.toLowerCase())
+  );
+
   return (
     <div className="min-h-screen bg-[#070b14] text-gray-100 font-sans p-4 md:p-8">
-      {/* Header */}
+      {/* TOP NAVIGATION */}
       <header className="flex flex-wrap items-center justify-between border-b border-gray-800 pb-4 mb-6 gap-4">
         <div className="flex items-center gap-3">
-          <span className="bg-red-600 text-white font-black px-3.5 py-1 rounded text-lg tracking-wider shadow-md">
+          <span className="bg-red-600 text-white font-black px-3.5 py-1 rounded text-lg tracking-wider shadow">
             MOINUFLIX
           </span>
           <span className="text-sm font-semibold tracking-widest text-gray-400">
-            CINEMA STUDIO ADMIN
+            ADMIN STUDIO
           </span>
         </div>
 
-        <div className="flex items-center bg-[#0f172a] p-1 rounded-lg border border-gray-800 text-xs font-semibold">
+        <nav className="flex items-center bg-[#0f172a] p-1 rounded-lg border border-gray-800 text-xs font-semibold">
+          <button
+            onClick={() => setActiveTab("movies")}
+            className={`px-3 py-1.5 rounded transition ${
+              activeTab === "movies" ? "bg-red-600 text-white" : "text-gray-400 hover:text-white"
+            }`}
+          >
+            Movies List ({library.length})
+          </button>
           <button
             onClick={() => setActiveTab("editor")}
             className={`px-3 py-1.5 rounded transition ${
               activeTab === "editor" ? "bg-red-600 text-white" : "text-gray-400 hover:text-white"
             }`}
           >
-            Studio Editor
-          </button>
-          <button
-            onClick={() => setActiveTab("library")}
-            className={`px-3 py-1.5 rounded transition ${
-              activeTab === "library" ? "bg-red-600 text-white" : "text-gray-400 hover:text-white"
-            }`}
-          >
-            Library Manager ({library.length})
+            Add / Edit Movie
           </button>
           <button
             onClick={() => setActiveTab("json")}
@@ -350,26 +398,119 @@ export default function MoinuFlixCinemaStudio() {
           >
             JSON Audit
           </button>
-        </div>
+        </nav>
 
         <span className="text-xs bg-cyan-950/80 text-cyan-400 border border-cyan-800 px-3 py-1 rounded-full font-bold shadow-sm">
-          ⚡ Full Artwork & Multi-Audio Engine
+          ⚡ Production Engine
         </span>
       </header>
 
-      {/* VIEW 1: EDITOR */}
+      {/* VIEW 1: MOVIES LIST (DATABASE RECORDS) */}
+      {activeTab === "movies" && (
+        <div className="bg-[#0f172a] border border-gray-800 p-6 rounded-xl shadow-lg space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-red-500 uppercase tracking-widest">
+                Database Records (resources/data/catalog.json)
+              </h2>
+              <p className="text-xs text-gray-400">Click any movie to edit its metadata or delete records safely.</p>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Search catalog by title, year, category..."
+                value={libSearch}
+                onChange={(e) => setLibSearch(e.target.value)}
+                className="bg-[#1e293b] border border-gray-700 px-3 py-1.5 rounded text-xs text-white outline-none w-64"
+              />
+              <button
+                onClick={fetchLibrary}
+                className="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded font-semibold text-gray-300 border border-gray-700"
+              >
+                🔄 Refresh
+              </button>
+            </div>
+          </div>
+
+          {loadingLibrary ? (
+            <div className="text-center py-16 text-xs text-gray-500">Loading catalog from GitHub...</div>
+          ) : filteredLibrary.length === 0 ? (
+            <div className="text-center py-16 text-xs text-gray-500">No matching movies found in catalog.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-800 text-gray-400">
+                    <th className="py-2.5 px-3">Poster</th>
+                    <th className="py-2.5 px-3">Title & Year</th>
+                    <th className="py-2.5 px-3">Industry Category</th>
+                    <th className="py-2.5 px-3">Chunk Path</th>
+                    <th className="py-2.5 px-3">Rating</th>
+                    <th className="py-2.5 px-3">Versions</th>
+                    <th className="py-2.5 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800">
+                  {filteredLibrary.map((item) => (
+                    <tr key={item.id} className="hover:bg-[#1e293b]/50 transition">
+                      <td className="py-2 px-3">
+                        {item.poster ? (
+                          <img src={item.poster} className="w-8 h-12 object-cover rounded shadow" alt={item.title} />
+                        ) : (
+                          <div className="w-8 h-12 bg-gray-800 rounded text-[9px] flex items-center justify-center">N/A</div>
+                        )}
+                      </td>
+                      <td className="py-2 px-3">
+                        <div className="font-bold text-white">{item.title}</div>
+                        <div className="text-gray-500 text-[11px]">{item.year}</div>
+                      </td>
+                      <td className="py-2 px-3 font-semibold text-yellow-400">{item.category || "Hollywood"}</td>
+                      <td className="py-2 px-3 font-mono text-cyan-400">{item.chunk_file}</td>
+                      <td className="py-2 px-3 font-bold text-yellow-400">⭐ {item.rating || "N/A"}</td>
+                      <td className="py-2 px-3">
+                        <span className="bg-gray-800 text-gray-300 px-2 py-0.5 rounded text-[10px] font-semibold">
+                          {item.version_count} versions
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-right space-x-2">
+                        <button
+                          onClick={() => {
+                            handleSelectMovie(item.id);
+                            setActiveTab("editor");
+                          }}
+                          className="bg-blue-600/80 hover:bg-blue-600 text-white px-2 py-1 rounded text-[10px] font-bold"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteMovie(item.id, item.title)}
+                          className="bg-red-600/80 hover:bg-red-600 text-white px-2 py-1 rounded text-[10px] font-bold"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* VIEW 2: ADD / EDIT STUDIO */}
       {activeTab === "editor" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: Search & Raw Parser */}
           <div className="lg:col-span-5 space-y-6">
             <div className="bg-[#0f172a] border border-gray-800 p-4 rounded-xl shadow-lg">
               <h2 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-2">
-                Step 1 & 2: Search Title
+                Movie Search & TMDb Selector
               </h2>
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="Type movie name (e.g. Avatar, Cars, Leo)..."
+                  placeholder="Type movie name (e.g. Avatar, Cars, Leo, Master)..."
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -377,9 +518,9 @@ export default function MoinuFlixCinemaStudio() {
                 />
                 <button
                   onClick={handleSearch}
-                  className="bg-red-600 hover:bg-red-700 font-bold px-4 py-2 rounded text-sm text-white"
+                  className="bg-red-600 hover:bg-red-700 font-bold px-4 py-2 rounded text-sm text-white transition"
                 >
-                  {loading ? "..." : "Find"}
+                  {searching ? "..." : "Find"}
                 </button>
               </div>
 
@@ -398,14 +539,12 @@ export default function MoinuFlixCinemaStudio() {
                           alt={m.title}
                         />
                       ) : (
-                        <div className="w-10 h-14 bg-gray-700 rounded flex items-center justify-center text-[10px]">
-                          No Pic
-                        </div>
+                        <div className="w-10 h-14 bg-gray-700 rounded flex items-center justify-center text-[10px]">No Pic</div>
                       )}
                       <div>
                         <div className="font-bold text-sm text-white">{m.title}</div>
                         <div className="text-xs text-gray-400">
-                          {m.release_date ? m.release_date.split("-")[0] : "N/A"}
+                          {m.release_date ? m.release_date.split("-")[0] : "N/A"} • ID: {m.id}
                         </div>
                       </div>
                     </div>
@@ -414,7 +553,7 @@ export default function MoinuFlixCinemaStudio() {
               )}
             </div>
 
-            {/* Step 3: Raw Parser */}
+            {/* Raw Rename Parser */}
             <div className="bg-[#0f172a] border border-cyan-900/60 p-4 rounded-xl shadow-lg">
               <h2 className="text-xs font-bold text-cyan-400 uppercase tracking-widest mb-2">
                 ⚡ Raw File Rename Parser (Auto-Fill)
@@ -435,11 +574,16 @@ export default function MoinuFlixCinemaStudio() {
             </div>
           </div>
 
-          {/* Right Column: Complete Details & Artwork Studio */}
+          {/* Right Column: Full Metadata & Artwork Studio */}
           <div className="lg:col-span-7 space-y-6">
-            {movie ? (
+            {loadingMeta ? (
+              <div className="bg-[#0f172a] border border-gray-800 p-16 rounded-xl text-center text-gray-400">
+                <div className="text-4xl animate-bounce mb-2">⏳</div>
+                <div className="text-sm font-semibold">Ingesting multi-provider metadata (TMDb, Fanart, OMDb)...</div>
+              </div>
+            ) : movie ? (
               <div className="bg-[#0f172a] border border-gray-800 p-5 rounded-xl space-y-5 shadow-2xl relative">
-                {/* Header Spotlight Backdrop */}
+                {/* Spotlight Backdrop Header */}
                 <div className="relative rounded-lg overflow-hidden border border-gray-700 p-4 min-h-[140px] flex items-end">
                   {movie.artwork?.fanart && (
                     <img
@@ -468,13 +612,18 @@ export default function MoinuFlixCinemaStudio() {
                       )}
                       <div className="flex flex-wrap items-center gap-2 text-xs">
                         <span className="bg-red-950 text-red-400 px-2 py-0.5 rounded font-bold border border-red-800">
-                          {movie.certification || "UA"}
+                          {movie.certification || "NR"}
                         </span>
                         <span className="text-gray-300 font-semibold">{movie.year}</span>
                         <span className="text-gray-400">• {movie.runtime} min</span>
                         <span className="bg-yellow-950 text-yellow-400 px-2 py-0.5 rounded font-bold border border-yellow-800">
                           ⭐ IMDb {movie.ratings?.imdb || movie.ratings?.tmdb || "N/A"}
                         </span>
+                        {movie.ratings?.rotten_tomatoes && (
+                          <span className="bg-red-950 text-red-400 px-2 py-0.5 rounded font-bold border border-red-800">
+                            🍅 {movie.ratings.rotten_tomatoes}%
+                          </span>
+                        )}
                         <span className="bg-cyan-950 text-cyan-400 px-2 py-0.5 rounded font-bold border border-cyan-800 uppercase">
                           Lang: {movie.original_language}
                         </span>
@@ -483,156 +632,147 @@ export default function MoinuFlixCinemaStudio() {
                   </div>
                 </div>
 
-                {/* SECTION 5: COMPLETE ARTWORK, PROMOTIONAL & TRAILER STUDIO */}
+                {/* COMPLETE 13-ASSET ARTWORK STUDIO */}
                 <div className="bg-[#0a0f1d] p-4 rounded-xl border border-gray-800 space-y-4">
                   <div className="flex items-center justify-between border-b border-gray-800 pb-2">
                     <div>
                       <h3 className="text-xs font-bold text-cyan-400 uppercase tracking-widest">
-                        🖼️ Section 5: Promotional Artwork, ClearArt & Trailer
+                        🖼️ Complete Artwork & Asset Studio (13 Assets)
                       </h3>
-                      <p className="text-[10px] text-gray-500">
-                        Live visual previews with manual URL correction. Blank if not found.
-                      </p>
+                      <p className="text-[10px] text-gray-500">Live visual previews with manual URL editability. Blank if missing.</p>
                     </div>
-                    <span className="text-[10px] bg-gray-800 text-gray-300 px-2 py-0.5 rounded font-mono">
-                      Fanart.tv & TMDB
-                    </span>
+                    {/* Trailer Status Masked (No visible URL) */}
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border bg-[#1e293b]">
+                      {movie.trailer && movie.trailer.includes("youtube.com") ? (
+                        <span className="text-emerald-400 flex items-center gap-1">
+                          ✓ Trailer Found
+                        </span>
+                      ) : (
+                        <span className="text-red-400 flex items-center gap-1">
+                          ✕ Trailer Not Found
+                        </span>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                    {/* 1. ClearLogo (Transparent Title) */}
-                    <div className="bg-[#1e293b]/70 p-2.5 rounded-lg border border-gray-700/80 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-bold text-gray-300">1. ClearLogo (Transparent Title)</label>
-                        {movie.artwork?.clearlogo && (
-                          <span className="text-[9px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.2 rounded font-bold">
-                            Active
-                          </span>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                    {/* 1. Poster */}
+                    <div className="bg-[#1e293b]/70 p-2.5 rounded-lg border border-gray-700/80 space-y-1.5">
+                      <label className="text-[11px] font-bold text-gray-300">1. Poster (780w)</label>
+                      <div className="h-20 bg-[#070b14] rounded flex items-center justify-center overflow-hidden border border-gray-800">
+                        {movie.artwork?.poster ? (
+                          <img src={movie.artwork.poster} alt="Poster" className="h-full object-contain" />
+                        ) : (
+                          <span className="text-[10px] text-gray-600">Blank</span>
                         )}
                       </div>
-                      <div className="h-16 bg-[#070b14] rounded flex items-center justify-center p-2 border border-gray-800">
+                      <input
+                        type="text"
+                        value={movie.artwork?.poster || ""}
+                        onChange={(e) => updateArtworkField("poster", e.target.value)}
+                        placeholder="Poster URL"
+                        className="w-full bg-[#0f172a] border border-gray-700 px-2 py-1 rounded text-[10px] text-gray-300 font-mono"
+                      />
+                    </div>
+
+                    {/* 2. ClearLogo */}
+                    <div className="bg-[#1e293b]/70 p-2.5 rounded-lg border border-gray-700/80 space-y-1.5">
+                      <label className="text-[11px] font-bold text-gray-300">2. ClearLogo (Transparent Title)</label>
+                      <div className="h-20 bg-[#070b14] rounded flex items-center justify-center p-2 border border-gray-800">
                         {movie.artwork?.clearlogo ? (
-                          <img src={movie.artwork.clearlogo} alt="ClearLogo" className="max-h-12 max-w-full object-contain" />
+                          <img src={movie.artwork.clearlogo} alt="ClearLogo" className="max-h-14 max-w-full object-contain" />
                         ) : (
-                          <span className="text-[10px] text-gray-600">No ClearLogo (Blank)</span>
+                          <span className="text-[10px] text-gray-600">Blank</span>
                         )}
                       </div>
                       <input
                         type="text"
                         value={movie.artwork?.clearlogo || ""}
                         onChange={(e) => updateArtworkField("clearlogo", e.target.value)}
-                        placeholder="https://assets.fanart.tv/fanart/movies/.../logo.png"
-                        className="w-full bg-[#0f172a] border border-gray-700 px-2.5 py-1.5 rounded text-[11px] text-yellow-300 font-mono"
+                        placeholder="ClearLogo URL"
+                        className="w-full bg-[#0f172a] border border-gray-700 px-2 py-1 rounded text-[10px] text-yellow-300 font-mono"
                       />
                     </div>
 
-                    {/* 2. ClearArt (Character Cutout) */}
-                    <div className="bg-[#1e293b]/70 p-2.5 rounded-lg border border-gray-700/80 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-bold text-gray-300">2. ClearArt (Transparent Character)</label>
-                        {movie.artwork?.clearart && (
-                          <span className="text-[9px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.2 rounded font-bold">
-                            Active
-                          </span>
-                        )}
-                      </div>
-                      <div className="h-16 bg-[#070b14] rounded flex items-center justify-center p-2 border border-gray-800">
+                    {/* 3. ClearArt */}
+                    <div className="bg-[#1e293b]/70 p-2.5 rounded-lg border border-gray-700/80 space-y-1.5">
+                      <label className="text-[11px] font-bold text-gray-300">3. ClearArt (Character PNG)</label>
+                      <div className="h-20 bg-[#070b14] rounded flex items-center justify-center p-2 border border-gray-800">
                         {movie.artwork?.clearart ? (
-                          <img src={movie.artwork.clearart} alt="ClearArt" className="max-h-14 max-w-full object-contain" />
+                          <img src={movie.artwork.clearart} alt="ClearArt" className="max-h-16 max-w-full object-contain" />
                         ) : (
-                          <span className="text-[10px] text-gray-600">No ClearArt (Blank)</span>
+                          <span className="text-[10px] text-gray-600">Blank</span>
                         )}
                       </div>
                       <input
                         type="text"
                         value={movie.artwork?.clearart || ""}
                         onChange={(e) => updateArtworkField("clearart", e.target.value)}
-                        placeholder="https://assets.fanart.tv/.../clearart.png"
-                        className="w-full bg-[#0f172a] border border-gray-700 px-2.5 py-1.5 rounded text-[11px] text-cyan-300 font-mono"
+                        placeholder="ClearArt URL"
+                        className="w-full bg-[#0f172a] border border-gray-700 px-2 py-1 rounded text-[10px] text-cyan-300 font-mono"
                       />
                     </div>
 
-                    {/* 3. Wide Promotional Banner */}
-                    <div className="bg-[#1e293b]/70 p-2.5 rounded-lg border border-gray-700/80 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-bold text-gray-300">3. Promotional Banner (Wide 1000x185)</label>
-                        {movie.artwork?.banner && (
-                          <span className="text-[9px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.2 rounded font-bold">
-                            Active
-                          </span>
-                        )}
-                      </div>
-                      <div className="h-14 bg-[#070b14] rounded flex items-center justify-center overflow-hidden border border-gray-800">
+                    {/* 4. Banner */}
+                    <div className="bg-[#1e293b]/70 p-2.5 rounded-lg border border-gray-700/80 space-y-1.5">
+                      <label className="text-[11px] font-bold text-gray-300">4. Wide Banner (1000x185)</label>
+                      <div className="h-16 bg-[#070b14] rounded flex items-center justify-center overflow-hidden border border-gray-800">
                         {movie.artwork?.banner ? (
                           <img src={movie.artwork.banner} alt="Banner" className="w-full h-full object-cover" />
                         ) : (
-                          <span className="text-[10px] text-gray-600">No Banner Available (Blank)</span>
+                          <span className="text-[10px] text-gray-600">Blank</span>
                         )}
                       </div>
                       <input
                         type="text"
                         value={movie.artwork?.banner || ""}
                         onChange={(e) => updateArtworkField("banner", e.target.value)}
-                        placeholder="https://assets.fanart.tv/.../banner.jpg"
-                        className="w-full bg-[#0f172a] border border-gray-700 px-2.5 py-1.5 rounded text-[11px] text-gray-300 font-mono"
+                        placeholder="Banner URL"
+                        className="w-full bg-[#0f172a] border border-gray-700 px-2 py-1 rounded text-[10px] text-gray-300 font-mono"
                       />
                     </div>
 
-                    {/* 4. Landscape / Thumbnail Art */}
-                    <div className="bg-[#1e293b]/70 p-2.5 rounded-lg border border-gray-700/80 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-bold text-gray-300">4. Thumbnail / Landscape (16:9)</label>
-                        {movie.artwork?.landscape && (
-                          <span className="text-[9px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.2 rounded font-bold">
-                            Active
-                          </span>
-                        )}
-                      </div>
-                      <div className="h-14 bg-[#070b14] rounded flex items-center justify-center overflow-hidden border border-gray-800">
+                    {/* 5. Landscape / Thumbnail */}
+                    <div className="bg-[#1e293b]/70 p-2.5 rounded-lg border border-gray-700/80 space-y-1.5">
+                      <label className="text-[11px] font-bold text-gray-300">5. Landscape / Thumb (16:9)</label>
+                      <div className="h-16 bg-[#070b14] rounded flex items-center justify-center overflow-hidden border border-gray-800">
                         {movie.artwork?.landscape ? (
                           <img src={movie.artwork.landscape} alt="Landscape" className="w-full h-full object-cover" />
                         ) : (
-                          <span className="text-[10px] text-gray-600">No Landscape (Blank)</span>
+                          <span className="text-[10px] text-gray-600">Blank</span>
                         )}
                       </div>
                       <input
                         type="text"
                         value={movie.artwork?.landscape || ""}
                         onChange={(e) => updateArtworkField("landscape", e.target.value)}
-                        placeholder="https://image.tmdb.org/t/p/... or Fanart thumb"
-                        className="w-full bg-[#0f172a] border border-gray-700 px-2.5 py-1.5 rounded text-[11px] text-gray-300 font-mono"
+                        placeholder="Landscape URL"
+                        className="w-full bg-[#0f172a] border border-gray-700 px-2 py-1 rounded text-[10px] text-gray-300 font-mono"
+                      />
+                    </div>
+
+                    {/* 6. Keyart */}
+                    <div className="bg-[#1e293b]/70 p-2.5 rounded-lg border border-gray-700/80 space-y-1.5">
+                      <label className="text-[11px] font-bold text-gray-300">6. Keyart</label>
+                      <div className="h-16 bg-[#070b14] rounded flex items-center justify-center overflow-hidden border border-gray-800">
+                        {movie.artwork?.keyart ? (
+                          <img src={movie.artwork.keyart} alt="Keyart" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] text-gray-600">Blank</span>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={movie.artwork?.keyart || ""}
+                        onChange={(e) => updateArtworkField("keyart", e.target.value)}
+                        placeholder="Keyart URL"
+                        className="w-full bg-[#0f172a] border border-gray-700 px-2 py-1 rounded text-[10px] text-gray-300 font-mono"
                       />
                     </div>
                   </div>
-
-                  {/* 5. Official YouTube Trailer URL */}
-                  <div className="bg-[#1e293b]/70 p-2.5 rounded-lg border border-gray-700/80 space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-red-400 flex items-center gap-1.5">
-                        ▶ Official YouTube Trailer URL
-                      </label>
-                      {movie.trailer && (
-                        <a
-                          href={movie.trailer}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[10px] text-cyan-400 underline hover:text-cyan-300"
-                        >
-                          Test Play Trailer ↗
-                        </a>
-                      )}
-                    </div>
-                    <input
-                      type="text"
-                      value={movie.trailer || ""}
-                      onChange={(e) => setMovie({ ...movie, trailer: e.target.value })}
-                      placeholder="https://www.youtube.com/watch?v=..."
-                      className="w-full bg-[#0f172a] border border-gray-700 px-2.5 py-1.5 rounded text-[11px] text-red-300 font-mono"
-                    />
-                  </div>
                 </div>
 
-                {/* Category & Available Languages Selectors */}
+                {/* INDUSTRY CATEGORY & MULTI-LANGUAGE SELECTION */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-[#0a0f1d] p-3 rounded-lg border border-gray-800">
                   <div>
                     <label className="text-[11px] font-bold text-gray-400 block mb-1">
@@ -672,7 +812,7 @@ export default function MoinuFlixCinemaStudio() {
                   </div>
                 </div>
 
-                {/* Master Technical Parameters */}
+                {/* MASTER TECHNICAL PARAMETERS */}
                 <div className="bg-[#0a0f1d] p-3 rounded-lg border border-gray-800 space-y-3">
                   <div className="text-xs font-bold text-gray-400">Master Tech & Source Configuration</div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
@@ -734,15 +874,15 @@ export default function MoinuFlixCinemaStudio() {
                   </div>
                 </div>
 
-                {/* STEP 7: Playback Versions with Individual Audio Codec & Channels */}
+                {/* PLAYBACK VERSIONS (Exactly One Section) */}
                 <div className="space-y-3 bg-[#0a0f1d] p-3.5 rounded-lg border border-gray-800">
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest">
-                        Step 7: Playback Versions & Audio Tracks
+                        Playback Versions & Audio Tracks
                       </h3>
                       <p className="text-[10px] text-gray-400">
-                        Har language ka alag Audio Codec (DTS-HD 7.1, Dolby Atmos, DD 5.1, AAC 5.1)
+                        Independent audio format, channels, source badge, and playable stream URL.
                       </p>
                     </div>
                     <button
@@ -862,7 +1002,7 @@ export default function MoinuFlixCinemaStudio() {
                             type="text"
                             value={ver.stream_url}
                             onChange={(e) => updateVersion(idx, "stream_url", e.target.value)}
-                            placeholder="https://drive.google.com/file/d/..."
+                            placeholder="https://drive.google.com/file/d/... or Direct STRM URL"
                             className="bg-[#0f172a] border border-gray-600 px-2 py-1 rounded text-xs text-cyan-300 flex-1 font-mono"
                           />
                         </div>
@@ -876,7 +1016,7 @@ export default function MoinuFlixCinemaStudio() {
                   onClick={handleCommit}
                   className="w-full bg-emerald-600 hover:bg-emerald-500 text-black font-extrabold py-3.5 rounded-lg text-sm tracking-wider uppercase transition shadow-lg"
                 >
-                  Save to JSON & Commit to GitHub (Step 8)
+                  Save to JSON & Commit to GitHub
                 </button>
 
                 {commitStatus && (
@@ -895,86 +1035,20 @@ export default function MoinuFlixCinemaStudio() {
               <div className="bg-[#0f172a] border border-gray-800 p-16 rounded-xl text-center text-gray-500">
                 <div className="text-4xl mb-2">🎬</div>
                 <div className="text-sm font-semibold text-gray-400">No Movie Selected</div>
-                <div className="text-xs text-gray-600 mt-1">
-                  Search on left or paste release file name to populate details
-                </div>
+                <div className="text-xs text-gray-600 mt-1">Search on left or paste release file name to populate details</div>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* VIEW 2: LIBRARY MANAGER */}
-      {activeTab === "library" && (
-        <div className="bg-[#0f172a] border border-gray-800 p-6 rounded-xl shadow-lg">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-bold text-red-500 uppercase tracking-widest">
-              Database Records (resources/data/catalog.json)
-            </h2>
-            <button
-              onClick={fetchLibrary}
-              className="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded font-semibold text-gray-300 border border-gray-700"
-            >
-              🔄 Refresh List
-            </button>
-          </div>
-
-          {loadingLibrary ? (
-            <div className="text-center py-12 text-xs text-gray-500">Loading catalog from GitHub...</div>
-          ) : library.length === 0 ? (
-            <div className="text-center py-12 text-xs text-gray-500">No movies found.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-800 text-gray-400">
-                    <th className="py-2.5 px-3">Poster</th>
-                    <th className="py-2.5 px-3">Title & Year</th>
-                    <th className="py-2.5 px-3">Category</th>
-                    <th className="py-2.5 px-3">Chunk File</th>
-                    <th className="py-2.5 px-3">Rating</th>
-                    <th className="py-2.5 px-3">Versions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-800">
-                  {library.map((item) => (
-                    <tr key={item.id} className="hover:bg-[#1e293b]/50">
-                      <td className="py-2 px-3">
-                        {item.poster ? (
-                          <img src={item.poster} className="w-8 h-12 object-cover rounded shadow" alt={item.title} />
-                        ) : (
-                          <div className="w-8 h-12 bg-gray-800 rounded text-[9px] flex items-center justify-center">
-                            N/A
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-2 px-3">
-                        <div className="font-bold text-white">{item.title}</div>
-                        <div className="text-gray-500 text-[11px]">{item.year}</div>
-                      </td>
-                      <td className="py-2 px-3 font-semibold text-yellow-400">{item.category || "Hollywood"}</td>
-                      <td className="py-2 px-3 font-mono text-cyan-400">{item.chunk_file}</td>
-                      <td className="py-2 px-3 font-bold text-yellow-400">⭐ {item.rating || "N/A"}</td>
-                      <td className="py-2 px-3">
-                        <span className="bg-gray-800 text-gray-300 px-2 py-0.5 rounded text-[10px] font-semibold">
-                          {item.version_count} versions
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* VIEW 3: JSON AUDIT */}
       {activeTab === "json" && (
         <div className="bg-[#0f172a] border border-gray-800 p-6 rounded-xl shadow-lg space-y-4">
-          <h2 className="text-sm font-bold text-cyan-400 uppercase tracking-widest">
-            Active JSON Payload Verification
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-cyan-400 uppercase tracking-widest">Active Two-Tier JSON Payload Audit</h2>
+            <span className="text-xs text-gray-400 font-mono">Target: resources/data/chunks/ & catalog.json</span>
+          </div>
           <pre className="bg-[#0a0f1d] border border-gray-800 p-4 rounded text-xs font-mono text-emerald-400 overflow-x-auto max-h-[550px]">
             {JSON.stringify({ movie, specs, versions, category, selectedLangs }, null, 2)}
           </pre>
