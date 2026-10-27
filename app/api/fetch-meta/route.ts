@@ -17,9 +17,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 1. Ingest TMDB Core Details, Credits, Videos, Releases & External IDs (Includes wikidata_id)
+    // 1. TMDB Details + Images + Credits + Videos + External IDs
     const tmdbRes = await fetch(
-      `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${tmdbKey}&append_to_response=credits,videos,release_dates,external_ids`,
+      `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${tmdbKey}&append_to_response=credits,videos,release_dates,external_ids,images&include_image_language=en,ta,te,hi,null`,
       { next: { revalidate: 3600 } }
     );
     const tmdb = await tmdbRes.json();
@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     const imdbId = tmdb.external_ids?.imdb_id || tmdb.imdb_id;
     const wikidataId = tmdb.external_ids?.wikidata_id || null;
 
-    // Determine Certification
+    // Certification
     let certification = "UA";
     const releaseResults = tmdb.release_dates?.results || [];
     const inRelease = releaseResults.find((r: any) => r.iso_3166_1 === "IN");
@@ -44,12 +44,8 @@ export async function GET(req: NextRequest) {
 
     // Credits
     const rawCrew = tmdb.credits?.crew || [];
-    const directors = rawCrew
-      .filter((c: any) => c.job === "Director")
-      .map((c: any) => ({ name: c.name, job: "Director" }));
-    const writers = rawCrew
-      .filter((c: any) => ["Writer", "Screenplay", "Story"].includes(c.job))
-      .map((c: any) => ({ name: c.name, job: c.job }));
+    const directors = rawCrew.filter((c: any) => c.job === "Director").map((c: any) => ({ name: c.name, job: "Director" }));
+    const writers = rawCrew.filter((c: any) => ["Writer", "Screenplay", "Story"].includes(c.job)).map((c: any) => ({ name: c.name, job: c.job }));
     const cast = (tmdb.credits?.cast || []).slice(0, 15).map((c: any) => ({
       name: c.name,
       character: c.character,
@@ -60,7 +56,7 @@ export async function GET(req: NextRequest) {
     const videos = tmdb.videos?.results || [];
     const trailer = videos.find((v: any) => v.type === "Trailer" && v.site === "YouTube") || videos[0];
 
-    // 2. Ingest OMDb
+    // 2. OMDb Ratings
     let omdbData: any = {};
     if (omdbKey && imdbId) {
       try {
@@ -69,11 +65,11 @@ export async function GET(req: NextRequest) {
       } catch (_) {}
     }
 
-    // 3. Ingest Fanart.tv (ClearLogo)
+    // 3. High-Res Artwork (Fanart.tv Priority -> TMDb Fallback)
     let clearlogo = "";
     let clearart = "";
     let banner = "";
-    let landscape = "";
+    let landscape = tmdb.backdrop_path ? `https://image.tmdb.org/t/p/w780${tmdb.backdrop_path}` : "";
 
     if (fanartKey) {
       try {
@@ -81,8 +77,11 @@ export async function GET(req: NextRequest) {
         if (fanartRes.ok) {
           const fa = await fanartRes.json();
           const logos = fa.hdmovielogo || fa.movielogo || [];
-          const enLogo = logos.find((l: any) => l.lang === "en") || logos[0];
-          if (enLogo) clearlogo = enLogo.url;
+          if (logos.length > 0) {
+            // Find English logo first, or native, or first available
+            const preferredLogo = logos.find((l: any) => l.lang === "en") || logos.find((l: any) => l.lang === tmdb.original_language) || logos[0];
+            clearlogo = preferredLogo ? preferredLogo.url : "";
+          }
 
           const arts = fa.hdmovieclearart || fa.movieclearart || [];
           if (arts[0]) clearart = arts[0].url;
@@ -96,30 +95,20 @@ export async function GET(req: NextRequest) {
       } catch (_) {}
     }
 
-    // 4. Wikidata Query Fallback (Facts & Wikipedia Summary)
-    let plotSummary = tmdb.overview || "";
-    let wikiExtract = "";
+    // Fallback to TMDb Logos if Fanart.tv didn't have one!
+    if (!clearlogo && tmdb.images?.logos && tmdb.images.logos.length > 0) {
+      const tmdbLogos = tmdb.images.logos;
+      const bestLogo = tmdbLogos.find((l: any) => l.iso_639_1 === "en") ||
+                       tmdbLogos.find((l: any) => l.iso_639_1 === tmdb.original_language) ||
+                       tmdbLogos[0];
+      if (bestLogo?.file_path) {
+        clearlogo = `https://image.tmdb.org/t/p/w500${bestLogo.file_path}`;
+      }
+    }
 
-    if (wikidataId) {
-      try {
-        // Fetch direct structured claim from Wikidata Entity API
-        const wdRes = await fetch(`https://www.wikidata.org/wiki/Special:EntityData/${wikidataId}.json`);
-        if (wdRes.ok) {
-          const wdJson = await wdRes.json();
-          const entity = wdJson?.entities?.[wikidataId];
-          // Example: Wikipedia English sitelink extract
-          const enWikiTitle = entity?.sitelinks?.enwiki?.title;
-          if (enWikiTitle && (!plotSummary || plotSummary.length < 100)) {
-            const wikiRes = await fetch(
-              `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(enWikiTitle)}`
-            );
-            if (wikiRes.ok) {
-              const wData = await wikiRes.json();
-              if (wData.extract) plotSummary = wData.extract;
-            }
-          }
-        }
-      } catch (_) {}
+    // Fallback for banner from backdrops if not on Fanart
+    if (!banner && tmdb.images?.backdrops && tmdb.images.backdrops.length > 0) {
+      banner = `https://image.tmdb.org/t/p/w1280${tmdb.images.backdrops[0].file_path}`;
     }
 
     const completeMetadata = {
@@ -138,7 +127,7 @@ export async function GET(req: NextRequest) {
       genres: (tmdb.genres || []).map((g: any) => g.name),
       countries: (tmdb.production_countries || []).map((c: any) => c.name),
       studio: (tmdb.production_companies || []).map((c: any) => c.name).join(", "),
-      plot: plotSummary,
+      plot: tmdb.overview || "",
       director: directors,
       writers: writers,
       cast: cast,
