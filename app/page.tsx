@@ -16,6 +16,49 @@ const ALL_LANGUAGES = ["English", "Hindi", "Tamil", "Telugu", "Malayalam", "Kann
 
 export default function MoinuFlixAdminStudio() {
   const [activeTab, setActiveTab] = useState<"movies" | "editor" | "json">("editor");
+  const [arrivals, setArrivals] = useState<any[]>([]);
+  const [loadingArrivals, setLoadingArrivals] = useState(false);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+
+  const fetchArrivals = async () => {
+    setLoadingArrivals(true);
+    try {
+      const res = await fetch("/api/drive-arrivals");
+      const data = await res.json();
+      setArrivals(data.arrivals || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingArrivals(false);
+    }
+  };
+
+  const handleAutoMatchSave = async (item: any) => {
+    setSyncingId(item.gdrive_id);
+    try {
+      const res = await fetch("/api/auto-match-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: item.title,
+          gdrive_id: item.gdrive_id,
+          size: item.size
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`🎉 Successfully matched & saved: ${data.saved} into catalog & chunk!`);
+        setArrivals(prev => prev.filter(x => x.gdrive_id !== item.gdrive_id));
+      } else {
+        alert(`❌ Error: ${data.error || 'Failed to auto match'}`);
+      }
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
 
   // Search & Loading
   const [query, setQuery] = useState("");
