@@ -13,7 +13,6 @@
       --card-bg: rgba(15, 23, 42, 0.88);
       --card-border: rgba(56, 189, 248, 0.22);
       --govt-blue: #1d4ed8;
-      --govt-blue-light: #2563eb;
       --laser-cyan: #38bdf8;
       --laser-green: #10b981;
       --laser-gold: #f59e0b;
@@ -35,7 +34,6 @@
       overflow-x: hidden;
     }
 
-    /* DYNAMIC TMDB FANART BACKGROUND */
     #dynamic-bg {
       position: fixed;
       top: 0; left: 0; width: 100vw; height: 100vh;
@@ -158,7 +156,6 @@
       border-radius: 10px;
     }
 
-    /* TMDB SEARCH DROPDOWN */
     .tmdb-results-dropdown {
       position: absolute;
       top: 100%;
@@ -184,7 +181,6 @@
     .tmdb-item-row:hover { background: rgba(56, 189, 248, 0.15); }
     .tmdb-item-row img { width: 38px; height: 54px; object-fit: cover; border-radius: 6px; }
 
-    /* CAST SECTION */
     .cast-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
@@ -211,7 +207,6 @@
     .cast-role { font-size: 0.74rem; color: var(--laser-cyan); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
     .cast-link { font-size: 0.68rem; color: var(--laser-green); text-decoration: none; margin-top: 2px; }
 
-    /* ARTWORK CHECKLIST */
     .artwork-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
@@ -316,18 +311,18 @@
 
       <div class="form-grid">
         <div class="form-group col-12">
-          <label>Raw Google Drive Release File Name <span class="required">* (Paste here for instant 100% full-fill)</span></label>
-          <input type="text" id="raw-filename" placeholder="e.g. Jailer 2023 2160p Amaz-HEVC-H265- Tamil [DTS 5.1 - 1509Kbps]-ESub SpidyWeb.mkv" required oninput="handleInstantRawIngest(this.value)">
+          <label>Raw Google Drive Release File Name <span class="required">* (Instant 100% Full Auto-Fill)</span></label>
+          <input type="text" id="raw-filename" placeholder="Paste full raw filename, e.g. Jana Nayagan 2026 1080p WEB-DL Tamil [DTS 5.1 - 1509Kbps] 10GB.mkv" required oninput="handleInstantRawIngest(this.value)">
         </div>
 
         <div class="form-group col-6">
-          <label>Google Drive File ID <span class="required">*</span></label>
-          <input type="text" id="drive-file-id" placeholder="Paste GDrive link or File ID" required>
+          <label>Google Drive File ID <span class="required">* (Spaces Auto-Cleaned)</span></label>
+          <input type="text" id="drive-file-id" placeholder="Paste GDrive link or File ID" required oninput="sanitizeDriveInput(this)">
         </div>
 
         <div class="form-group col-3">
           <label>TMDb Movie ID <span class="required">*</span></label>
-          <input type="number" id="tmdb-id" placeholder="e.g. 937020" required oninput="fetchTmdbOfficialDetails(this.value)">
+          <input type="number" id="tmdb-id" placeholder="e.g. 1235877" required oninput="fetchTmdbOfficialDetails(this.value)">
         </div>
 
         <div class="form-group col-3">
@@ -360,7 +355,7 @@
 
         <div class="form-group col-2">
           <label>Release Year</label>
-          <input type="number" id="movie-year" value="2023" oninput="updateDashPreview()">
+          <input type="number" id="movie-year" value="2026" oninput="updateDashPreview()">
         </div>
 
         <div class="form-group col-2">
@@ -375,7 +370,7 @@
 
         <div class="form-group col-3">
           <label>Runtime (Minutes)</label>
-          <input type="number" id="movie-runtime" value="165">
+          <input type="number" id="movie-runtime" value="180">
         </div>
 
         <div class="form-group col-3">
@@ -389,7 +384,7 @@
 
         <div class="form-group col-3">
           <label>IMDb ID</label>
-          <input type="text" id="movie-imdb-id" placeholder="tt11663228">
+          <input type="text" id="movie-imdb-id" placeholder="tt33379543">
         </div>
 
         <div class="form-group col-6">
@@ -404,7 +399,7 @@
 
         <div class="form-group col-12">
           <label>Genres Array (Kodi Categories) <span class="required">*</span></label>
-          <input type="text" id="movie-genres" placeholder="Action, Comedy, Drama" value="Action, Comedy" required>
+          <input type="text" id="movie-genres" placeholder="Action, Drama, Comedy" value="Action, Drama" required>
         </div>
 
         <div class="form-group col-12">
@@ -437,8 +432,8 @@
         <div class="form-group col-3">
           <label>Resolution <span class="required">*</span></label>
           <select id="tech-resolution" onchange="updateDashPreview()">
-            <option value="2160p" selected>2160p 4K UHD</option>
-            <option value="1080p">1080p FHD</option>
+            <option value="1080p" selected>1080p FHD</option>
+            <option value="2160p">2160p 4K UHD</option>
             <option value="720p">720p HD</option>
           </select>
         </div>
@@ -446,7 +441,8 @@
         <div class="form-group col-3">
           <label>Video Source / OTT Platform</label>
           <select id="tech-source" onchange="handleSourceChange(this.value)">
-            <option value="AMZN" selected>Amazon Prime Video (Amaz/AMZN)</option>
+            <option value="WEB-DL" selected>WEB-DL (Generic)</option>
+            <option value="AMZN">Amazon Prime Video (Amaz/AMZN)</option>
             <option value="Sun NXT">Sun NXT</option>
             <option value="Netflix">Netflix</option>
             <option value="Hotstar">Disney+ Hotstar</option>
@@ -456,16 +452,14 @@
             <option value="Zee5">Zee5</option>
             <option value="Apple TV+">Apple TV+</option>
             <option value="BluRay">BluRay / REMUX</option>
-            <option value="WEB-DL">WEB-DL (Generic)</option>
           </select>
         </div>
 
         <div class="form-group col-3">
           <label>Source Image Asset Path</label>
-          <input type="text" id="tech-source-image" value="resources/images/sources/amazon.png" readonly style="background-color: rgba(255,255,255,0.05);">
+          <input type="text" id="tech-source-image" value="resources/images/sources/web.png" readonly style="background-color: rgba(255,255,255,0.05);">
         </div>
 
-        <!-- AUTO-PARSED OR MANUAL GB DROPDOWN -->
         <div class="form-group col-3">
           <label>Clean Rounded Size (Auto or Select)</label>
           <select id="tech-filesize-select" onchange="handleSizeSelect(this.value)">
@@ -473,11 +467,11 @@
             <option value="2 GB">2 GB</option>
             <option value="3 GB">3 GB</option>
             <option value="4 GB">4 GB</option>
-            <option value="5 GB" selected>5 GB</option>
+            <option value="5 GB">5 GB</option>
             <option value="6 GB">6 GB</option>
             <option value="7 GB">7 GB</option>
             <option value="8 GB">8 GB</option>
-            <option value="10 GB">10 GB</option>
+            <option value="10 GB" selected>10 GB</option>
             <option value="12 GB">12 GB</option>
             <option value="14 GB">14 GB</option>
             <option value="16 GB">16 GB</option>
@@ -490,7 +484,7 @@
 
         <div class="form-group col-12">
           <label>Expanded Multi-Audio Specifications</label>
-          <input type="text" id="tech-audio-specs" value="Tamil [DTS 5.1 - 1509Kbps]" oninput="updateDashPreview()">
+          <input type="text" id="tech-audio-specs" value="Tamil DTS 5.1 - 1509Kbps" oninput="updateDashPreview()">
         </div>
       </div>
 
@@ -628,6 +622,14 @@
     }
   }
 
+  // Auto clean accidental spaces in GDrive IDs
+  function sanitizeDriveInput(el) {
+    let clean = el.value.replace(/\s+/g, '');
+    const m = clean.match(/[-\w]{25,}/);
+    if (m) clean = m[0];
+    el.value = clean;
+  }
+
   /* ⚡ INSTANT 100% AUTO INGEST ENGINE */
   let rawIngestDebounce = null;
   function handleInstantRawIngest(raw) {
@@ -639,7 +641,7 @@
     else if (/\b(720p)\b/i.test(raw)) resSel.value = "720p";
     else resSel.value = "1080p";
 
-    // 2. Video Source / OTT (Checks Amaz, Prime, AMZN, Sun NXT)
+    // 2. Video Source
     if (/amaz|amzn|prime/i.test(raw)) handleSourceChange("AMZN");
     else if (/sun\s*nxt|sunnxt/i.test(raw)) handleSourceChange("Sun NXT");
     else if (/nf|netflix/i.test(raw)) handleSourceChange("Netflix");
@@ -651,14 +653,15 @@
     else if (/bluray|remux/i.test(raw)) handleSourceChange("BluRay");
     else handleSourceChange("WEB-DL");
 
-    // 3. Audio Specs detection (e.g. Tamil [DTS 5.1 - 1509Kbps])
+    // 3. Audio & Bitrate String Extraction (Clean single bracket)
     const audioMatch = raw.match(/\[(.*?(?:DTS|Atmos|DDP|DD|AC3|AAC|1509Kbps|640Kbps).*?)\]/i) ||
                        raw.match(/\b(Tamil|Telugu|Hindi|English)\s*\[(.*?)\]/i);
     if (audioMatch) {
-      document.getElementById("tech-audio-specs").value = audioMatch[0].replace(/[\[\]]/g, '');
+      let cleanAudio = audioMatch[0].replace(/\[+/g, '').replace(/\]+/g, '').trim();
+      document.getElementById("tech-audio-specs").value = cleanAudio;
     }
 
-    // 4. Clean Size Extraction or Dropdown selection
+    // 4. Clean Size Extraction
     const sizeMatch = raw.match(/(\d+\.?\d*)\s*(gb|mb)/i);
     if (sizeMatch) {
       let num = parseFloat(sizeMatch[1]);
@@ -667,7 +670,7 @@
       selectDropdownValue("tech-filesize-select", cleanGb);
     }
 
-    // 5. Clean Title & Year extraction for Auto TMDb Search
+    // 5. Title & Year extraction for Auto TMDb Search
     let clean = raw.replace(/\.(mkv|mp4|avi|ts)$/i, '').replace(/[\._\-]/g, ' ');
     const ym = clean.match(/\b(19\d\d|20\d\d)\b/);
     let year = ym ? ym[1] : '';
@@ -735,7 +738,7 @@
     const year = document.getElementById("movie-year").value || "2024";
     const res = document.getElementById("tech-resolution").value;
     const src = document.getElementById("tech-source").value;
-    const audio = document.getElementById("tech-audio-specs").value;
+    let audio = document.getElementById("tech-audio-specs").value.trim();
     const sz = document.getElementById("tech-filesize-select").value;
 
     document.getElementById("dash-name-preview").textContent = 
@@ -785,6 +788,15 @@
     }, 300);
   }
 
+  // Language Code to Full Name Converter
+  function getLanguageName(code) {
+    const map = {
+      'ta': 'Tamil', 'te': 'Telugu', 'hi': 'Hindi', 'en': 'English',
+      'ml': 'Malayalam', 'kn': 'Kannada', 'bn': 'Bengali', 'mr': 'Marathi'
+    };
+    return map[code] || 'Multi';
+  }
+
   // Fetch Full TMDb + Cast + Artworks + Dynamic Fanart Backdrop
   async function fetchTmdbOfficialDetails(id) {
     if (!id) return;
@@ -797,7 +809,7 @@
       document.getElementById("movie-orig-title").value = d.original_title || d.title || "";
       document.getElementById("movie-year").value = (d.release_date || "2024").split("-")[0];
       document.getElementById("movie-rating").value = d.vote_average ? d.vote_average.toFixed(1) : "7.5";
-      document.getElementById("movie-lang").value = d.original_language || "en";
+      document.getElementById("movie-lang").value = d.original_language || "ta";
       document.getElementById("movie-runtime").value = d.runtime || 120;
       document.getElementById("movie-plot").value = d.overview || "";
       document.getElementById("movie-imdb-id").value = d.external_ids?.imdb_id || d.imdb_id || "";
@@ -892,19 +904,28 @@
     else alert("Trailer link missing!");
   }
 
-  // Two-Tier Commit to GitHub
+  // Two-Tier Commit to GitHub (With Space Auto-Sanitizer)
   async function handleFormSubmission(e) {
     e.preventDefault();
     const token = getToken();
     if (!token) return alert("GitHub Token missing! Please click 'Set / Fix PAT Token' at top right.");
 
-    const driveId = document.getElementById("drive-file-id").value.trim();
+    // Critical: Strip out all internal/leading/trailing spaces from Drive ID
+    let rawDrive = document.getElementById("drive-file-id").value.trim().replace(/\s+/g, '');
+    const m = rawDrive.match(/[-\w]{25,}/);
+    const driveId = m ? m[0] : rawDrive;
+    
+    if (!driveId || driveId.length < 20) {
+      return alert("Invalid Google Drive File ID! Please verify link.");
+    }
+
     const tmdbId = document.getElementById("tmdb-id").value.trim();
     const title = document.getElementById("movie-title").value.trim();
     const origTitle = document.getElementById("movie-orig-title").value.trim() || title;
     const year = parseInt(document.getElementById("movie-year").value, 10) || 2024;
     const rating = parseFloat(document.getElementById("movie-rating").value) || 7.5;
-    const lang = document.getElementById("movie-lang").value.trim();
+    const langCode = document.getElementById("movie-lang").value.trim();
+    const fullLang = getLanguageName(langCode);
     const runtime = parseInt(document.getElementById("movie-runtime").value, 10) || 120;
     const cert = document.getElementById("movie-cert").value;
     const imdbId = document.getElementById("movie-imdb-id").value.trim();
@@ -921,6 +942,17 @@
     const audio = document.getElementById("tech-audio-specs").value;
     const dashName = document.getElementById("dash-name-preview").textContent;
     const streamUrl = `${WORKER_BASE}${driveId}${USER_AGENT}`;
+
+    // Auto-detect audio bitrate & badge format
+    let bitrateVal = "640 Kbps";
+    let audioFormatImg = "https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/audio/dolbydigital.png";
+    if (/1509/i.test(audio) || /dts/i.test(audio)) {
+      bitrateVal = "1509 Kbps";
+      audioFormatImg = "https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/audio/dts.png";
+    } else if (/atmos|truehd/i.test(audio)) {
+      bitrateVal = "768 Kbps";
+      audioFormatImg = "https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/audio/atmos.png";
+    }
 
     const artworkObj = {
       poster: document.getElementById("art-poster").value,
@@ -969,7 +1001,7 @@
         runtime: runtime,
         release_date: `${year}-01-01`,
         certification: cert,
-        original_language: lang,
+        original_language: langCode,
         genres: genres,
         tagline: "",
         plot: plot,
@@ -985,7 +1017,7 @@
           quality: `https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/resolution/${res}.png`,
           hdr: "",
           source: `https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/source/${src.toLowerCase().replace(/[^a-z]/g, '')}.png`,
-          audio_format: "https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/audio/dolbydigital.png",
+          audio_format: audioFormatImg,
           audio_channels: "https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/audio/5.1.png"
         },
         specs: {
@@ -995,15 +1027,15 @@
           bit_depth: "8bit",
           audio: audio,
           channels: "5.1",
-          bitrate: "640 Kbps",
-          languages: "Multi",
+          bitrate: bitrateVal,
+          languages: fullLang,
           size: sz
         },
         stream_url: streamUrl,
         versions: [{
           id: driveId,
           name: dashName,
-          language: "Multi",
+          language: fullLang,
           dubbed: audio,
           quality: `${res} FHD`,
           resolution: res,
@@ -1012,14 +1044,18 @@
           codec: "x264",
           audio: audio,
           channels: "5.1",
-          bitrate: "640 Kbps",
+          bitrate: bitrateVal,
           size: sz,
           stream_url: streamUrl
         }]
       };
 
       chunkData.movies = chunkData.movies || [];
-      chunkData.movies.push(fullMovieRecord);
+      // Replace if existing ID or push new
+      const exIdx = chunkData.movies.findIndex(m => m.id === driveId || m.tmdb_id === fullMovieRecord.tmdb_id);
+      if (exIdx >= 0) chunkData.movies[exIdx] = fullMovieRecord;
+      else chunkData.movies.push(fullMovieRecord);
+      
       chunkData.movie_count = chunkData.movies.length;
 
       await commitDirectToGithub(targetChunkPath, chunkData, `Add ${title} to ${currentTargetChunk}`, chunkSha, token);
@@ -1046,14 +1082,14 @@
         fanart: artworkObj.fanart,
         logo: artworkObj.clearlogo,
         rating: rating,
-        original_language: lang,
+        original_language: langCode,
         genres: genres,
         chunk_file: targetChunkPath,
         primary_stream_url: streamUrl,
-        available_languages: ["Multi"],
+        available_languages: [fullLang],
         version_count: 1,
         available_versions: [{
-          language: "Multi",
+          language: fullLang,
           dubbed: audio,
           quality: `${res} FHD`,
           source: src,
@@ -1066,11 +1102,13 @@
       };
 
       catData.movies = catData.movies || [];
-      catData.movies.push(catalogEntry);
+      const catExIdx = catData.movies.findIndex(m => m.id === driveId || m.tmdb_id === catalogEntry.tmdb_id);
+      if (catExIdx >= 0) catData.movies[catExIdx] = catalogEntry;
+      else catData.movies.push(catalogEntry);
 
       await commitDirectToGithub(catalogPath, catData, `Update catalog.json for ${title}`, catSha, token);
 
-      showToast(`🎉 SUCCESS: Record successfully committed to ${currentTargetChunk} and catalog.json!`);
+      showToast(`🎉 SUCCESS: Record committed to ${currentTargetChunk} and catalog.json!`);
       document.getElementById("media-ingest-form").reset();
       document.getElementById("cast-cards-container").innerHTML = '<div style="font-size:0.8rem; color:var(--text-muted); padding:10px;">Awaiting next movie...</div>';
       loadInitialStats();
