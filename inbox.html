@@ -3,48 +3,65 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MoinuFlix — National Media Catalog & Ingestion Portal</title>
+  <title>MoinuFlix — Media Ingestion Portal Pro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --govt-blue: #0b3c75;
-      --govt-blue-dark: #072852;
-      --govt-blue-light: #e8f1fc;
-      --govt-accent: #1976d2;
-      --govt-orange: #d97706;
-      --govt-green: #15803d;
-      --govt-red: #b91c1c;
-      --bg-light: #f4f6fa;
-      --card-white: #ffffff;
-      --border-gray: #cbd5e1;
-      --border-dark: #94a3b8;
-      --text-dark: #0f172a;
-      --text-muted: #475569;
+      --bg-dark: #080d1a;
+      --card-bg: rgba(15, 23, 42, 0.88);
+      --card-border: rgba(56, 189, 248, 0.22);
+      --govt-blue: #1d4ed8;
+      --govt-blue-light: #2563eb;
+      --laser-cyan: #38bdf8;
+      --laser-green: #10b981;
+      --laser-gold: #f59e0b;
+      --laser-red: #ef4444;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --input-bg: rgba(2, 6, 23, 0.75);
+      --border-gray: rgba(148, 163, 184, 0.2);
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
 
     body {
-      background-color: var(--bg-light);
-      color: var(--text-dark);
-      padding: 1.25rem;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      padding: 1.5rem;
       min-height: 100vh;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* DYNAMIC TMDB FANART BACKGROUND */
+    #dynamic-bg {
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background-size: cover;
+      background-position: center;
+      filter: blur(28px) brightness(0.25);
+      transform: scale(1.05);
+      z-index: -1;
+      transition: background-image 0.8s ease-in-out;
     }
 
     .container {
-      max-width: 1250px;
+      max-width: 1280px;
       margin: 0 auto;
-      background: var(--card-white);
-      border: 2px solid var(--govt-blue);
-      border-radius: 4px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+      background: var(--card-bg);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
       overflow: hidden;
     }
 
     .govt-header {
-      background: linear-gradient(135deg, var(--govt-blue-dark), var(--govt-blue));
-      color: #ffffff;
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 58, 138, 0.85));
+      border-bottom: 2px solid var(--laser-cyan);
       padding: 1.25rem 2rem;
-      border-bottom: 4px solid var(--govt-orange);
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -52,43 +69,44 @@
       gap: 1rem;
     }
 
-    .govt-title { font-size: 1.35rem; font-weight: 800; letter-spacing: 0.5px; }
-    .govt-sub { font-size: 0.82rem; color: #cbd5e1; margin-top: 3px; }
-    
+    .govt-title { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.3px; color: #fff; }
+    .govt-sub { font-size: 0.82rem; color: var(--laser-cyan); margin-top: 3px; font-weight: 600; }
+
     .status-badge {
-      background: #ffffff;
-      color: var(--govt-blue);
-      padding: 0.4rem 0.9rem;
-      border-radius: 3px;
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--laser-cyan);
+      padding: 0.45rem 1rem;
+      border-radius: 30px;
       font-size: 0.78rem;
       font-weight: 800;
-      border: 1px solid #94a3b8;
+      border: 1px solid var(--card-border);
     }
 
     .stats-bar {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      background: var(--govt-blue-light);
+      background: rgba(2, 6, 23, 0.6);
       border-bottom: 1px solid var(--border-gray);
-      padding: 0.75rem 1.5rem;
+      padding: 0.85rem 2rem;
       gap: 1rem;
     }
 
     .stat-item { display: flex; flex-direction: column; }
     .stat-label { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
-    .stat-val { font-size: 1.1rem; font-weight: 800; color: var(--govt-blue-dark); }
+    .stat-val { font-size: 1.15rem; font-weight: 800; color: #fff; }
 
-    .form-wrapper { padding: 1.75rem; }
-    
+    .form-wrapper { padding: 2rem; }
+
     .section-title {
-      font-size: 0.95rem;
+      font-size: 0.92rem;
       font-weight: 800;
-      color: var(--govt-blue);
+      color: var(--laser-cyan);
       text-transform: uppercase;
+      letter-spacing: 0.5px;
       padding-bottom: 0.4rem;
-      border-bottom: 2px solid var(--govt-blue);
-      margin-top: 1.5rem;
-      margin-bottom: 1.2rem;
+      border-bottom: 1px solid var(--card-border);
+      margin-top: 1.75rem;
+      margin-bottom: 1.25rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -98,7 +116,7 @@
     .form-grid {
       display: grid;
       grid-template-columns: repeat(12, 1fr);
-      gap: 1rem;
+      gap: 1.1rem;
       margin-bottom: 1.25rem;
     }
 
@@ -109,46 +127,47 @@
     .col-3 { grid-column: span 3; }
     .col-2 { grid-column: span 2; }
 
-    .form-group { display: flex; flex-direction: column; gap: 0.35rem; position: relative; }
-    label { font-size: 0.78rem; font-weight: 700; color: var(--text-dark); }
-    .required { color: var(--govt-red); }
+    .form-group { display: flex; flex-direction: column; gap: 0.4rem; position: relative; }
+    label { font-size: 0.78rem; font-weight: 700; color: var(--text-muted); }
+    .required { color: var(--laser-red); }
 
     input, select, textarea {
-      padding: 0.65rem 0.75rem;
-      border: 1px solid var(--border-dark);
-      border-radius: 3px;
-      font-size: 0.85rem;
-      color: var(--text-dark);
-      background-color: #ffffff;
+      padding: 0.75rem 0.9rem;
+      border: 1px solid var(--border-gray);
+      border-radius: 10px;
+      font-size: 0.88rem;
+      color: #fff;
+      background-color: var(--input-bg);
       outline: none;
+      transition: all 0.2s ease;
     }
 
     input:focus, select:focus, textarea:focus {
-      border-color: var(--govt-accent);
-      box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
+      border-color: var(--laser-cyan);
+      box-shadow: 0 0 15px rgba(56, 189, 248, 0.25);
     }
 
     .smart-dash-preview {
-      background-color: #f8fafc;
-      border: 1px dashed var(--border-dark);
-      padding: 0.75rem 1rem;
+      background: rgba(2, 6, 23, 0.85);
+      border: 1px dashed var(--laser-cyan);
+      padding: 0.85rem 1.2rem;
       font-family: monospace;
-      font-size: 0.82rem;
-      color: var(--govt-blue);
+      font-size: 0.85rem;
+      color: var(--laser-green);
       word-break: break-all;
-      border-radius: 3px;
+      border-radius: 10px;
     }
 
-    /* DROPDOWN TMDB SEARCH */
+    /* TMDB SEARCH DROPDOWN */
     .tmdb-results-dropdown {
       position: absolute;
       top: 100%;
       left: 0;
       right: 0;
-      background: #ffffff;
-      border: 2px solid var(--govt-blue);
-      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
-      border-radius: 3px;
+      background: #0b1329;
+      border: 1px solid var(--laser-cyan);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+      border-radius: 10px;
       z-index: 1000;
       max-height: 280px;
       overflow-y: auto;
@@ -157,54 +176,54 @@
     .tmdb-item-row {
       display: flex;
       gap: 12px;
-      padding: 8px 12px;
-      border-bottom: 1px solid #e2e8f0;
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
       cursor: pointer;
       align-items: center;
     }
-    .tmdb-item-row:hover { background-color: var(--govt-blue-light); }
-    .tmdb-item-row img { width: 36px; height: 50px; object-fit: cover; border-radius: 2px; }
+    .tmdb-item-row:hover { background: rgba(56, 189, 248, 0.15); }
+    .tmdb-item-row img { width: 38px; height: 54px; object-fit: cover; border-radius: 6px; }
 
-    /* CAST SECTION STYLING */
+    /* CAST SECTION */
     .cast-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
       gap: 0.75rem;
-      background: #f8fafc;
+      background: rgba(2, 6, 23, 0.5);
       border: 1px solid var(--border-gray);
       padding: 1rem;
-      border-radius: 4px;
+      border-radius: 12px;
       max-height: 380px;
       overflow-y: auto;
     }
     .cast-card {
-      background: #ffffff;
+      background: rgba(15, 23, 42, 0.7);
       border: 1px solid var(--border-gray);
-      border-radius: 4px;
-      padding: 6px;
+      border-radius: 10px;
+      padding: 8px;
       display: flex;
-      gap: 8px;
+      gap: 10px;
       align-items: center;
     }
-    .cast-card img { width: 45px; height: 60px; object-fit: cover; border-radius: 3px; background: #e2e8f0; }
+    .cast-card img { width: 44px; height: 58px; object-fit: cover; border-radius: 8px; background: #0f172a; }
     .cast-info { display: flex; flex-direction: column; overflow: hidden; }
-    .cast-name { font-size: 0.8rem; font-weight: 700; color: var(--govt-blue); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
-    .cast-role { font-size: 0.72rem; color: var(--text-muted); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
-    .cast-link { font-size: 0.68rem; color: var(--govt-accent); text-decoration: none; margin-top: 2px; }
+    .cast-name { font-size: 0.82rem; font-weight: 700; color: #fff; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+    .cast-role { font-size: 0.74rem; color: var(--laser-cyan); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+    .cast-link { font-size: 0.68rem; color: var(--laser-green); text-decoration: none; margin-top: 2px; }
 
     /* ARTWORK CHECKLIST */
     .artwork-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
       gap: 0.75rem;
-      background: #fafafa;
-      padding: 1rem;
+      background: rgba(2, 6, 23, 0.5);
+      padding: 1.25rem;
       border: 1px solid var(--border-gray);
-      border-radius: 3px;
+      border-radius: 12px;
     }
-    .art-item { font-size: 0.75rem; display: flex; flex-direction: column; gap: 0.2rem; }
+    .art-item { font-size: 0.75rem; display: flex; flex-direction: column; gap: 0.3rem; }
     .art-item span { font-weight: 700; color: var(--text-muted); }
-    .art-item input { font-size: 0.75rem; padding: 0.4rem; font-family: monospace; }
+    .art-item input { font-size: 0.75rem; padding: 0.5rem; font-family: monospace; }
 
     .button-row {
       display: flex;
@@ -216,39 +235,45 @@
     }
 
     .btn {
-      padding: 0.75rem 1.6rem;
+      padding: 0.8rem 1.8rem;
       font-size: 0.85rem;
-      font-weight: 700;
-      border-radius: 3px;
+      font-weight: 800;
+      border-radius: 10px;
       cursor: pointer;
       border: 1px solid transparent;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      transition: all 0.2s ease;
     }
-    .btn-govt-primary { background-color: var(--govt-blue); color: #ffffff; }
-    .btn-govt-primary:hover { background-color: var(--govt-blue-dark); }
-    .btn-govt-secondary { background-color: #ffffff; color: var(--govt-blue); border-color: var(--govt-blue); }
-    .btn-govt-green { background-color: var(--govt-green); color: #ffffff; }
-    .btn-govt-green:hover { background-color: #166534; }
+    .btn-govt-secondary { background: rgba(56, 189, 248, 0.1); color: var(--laser-cyan); border-color: var(--card-border); }
+    .btn-govt-secondary:hover { background: var(--laser-cyan); color: #020617; }
+    .btn-govt-green {
+      background: linear-gradient(135deg, var(--laser-green), #059669);
+      color: #fff;
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.35);
+    }
+    .btn-govt-green:hover { transform: translateY(-2px); box-shadow: 0 0 25px rgba(16, 185, 129, 0.5); }
 
     #toast-msg {
       padding: 0.85rem 1.25rem;
       margin-bottom: 1.25rem;
-      border-radius: 3px;
+      border-radius: 10px;
       font-size: 0.85rem;
       font-weight: 700;
       display: none;
     }
-    .toast-success { background: #dcfce7; color: var(--govt-green); border: 1px solid #bbf7d0; }
-    .toast-error { background: #fee2e2; color: var(--govt-red); border: 1px solid #fecaca; }
+    .toast-success { background: rgba(16, 185, 129, 0.15); color: var(--laser-green); border: 1px solid var(--laser-green); }
+    .toast-error { background: rgba(239, 68, 68, 0.15); color: var(--laser-red); border: 1px solid var(--laser-red); }
 
     @media (max-width: 850px) {
       .col-8, .col-6, .col-4, .col-3, .col-2 { grid-column: span 12; }
-      .form-wrapper { padding: 1rem; }
+      .form-wrapper { padding: 1.2rem; }
     }
   </style>
 </head>
 <body>
+
+<div id="dynamic-bg"></div>
 
 <div class="container">
   <div class="govt-header">
@@ -266,7 +291,7 @@
     </div>
     <div class="stat-item">
       <span class="stat-label">Target Chunk (50-Limit)</span>
-      <span class="stat-val" id="stat-target-chunk">chunk_01.json</span>
+      <span class="stat-val" id="stat-target-chunk" style="color:var(--laser-cyan);">chunk_01.json</span>
     </div>
     <div class="stat-item">
       <span class="stat-label">System Architecture</span>
@@ -274,7 +299,7 @@
     </div>
     <div class="stat-item">
       <span class="stat-label">PAT Token Status</span>
-      <span class="stat-val" id="pat-status-indicator" style="color:var(--govt-orange);">Checking...</span>
+      <span class="stat-val" id="pat-status-indicator" style="color:var(--laser-gold);">Checking...</span>
     </div>
   </div>
 
@@ -291,23 +316,23 @@
 
       <div class="form-grid">
         <div class="form-group col-12">
-          <label>Raw Google Drive Release File Name <span class="required">*</span></label>
-          <input type="text" id="raw-filename" placeholder="Paste full raw filename with specs, e.g. Elysium (2013) 1080p BluRay..." required oninput="autoParseRawSpecs(this.value)">
+          <label>Raw Google Drive Release File Name <span class="required">* (Paste here for instant 100% full-fill)</span></label>
+          <input type="text" id="raw-filename" placeholder="e.g. Jailer 2023 2160p Amaz-HEVC-H265- Tamil [DTS 5.1 - 1509Kbps]-ESub SpidyWeb.mkv" required oninput="handleInstantRawIngest(this.value)">
         </div>
 
         <div class="form-group col-6">
           <label>Google Drive File ID <span class="required">*</span></label>
-          <input type="text" id="drive-file-id" placeholder="e.g. 1weC0Qp05eEMwTb0Q17krWXGcM5SDFVV0" required>
+          <input type="text" id="drive-file-id" placeholder="Paste GDrive link or File ID" required>
         </div>
 
         <div class="form-group col-3">
           <label>TMDb Movie ID <span class="required">*</span></label>
-          <input type="number" id="tmdb-id" placeholder="e.g. 68724" required oninput="fetchTmdbOfficialDetails(this.value)">
+          <input type="number" id="tmdb-id" placeholder="e.g. 937020" required oninput="fetchTmdbOfficialDetails(this.value)">
         </div>
 
         <div class="form-group col-3">
-          <label>Search Title for TMDb</label>
-          <input type="text" id="tmdb-search-input" placeholder="Type name for Top 5..." oninput="handleTmdbSearch(this.value)">
+          <label>Manual TMDb Search</label>
+          <input type="text" id="tmdb-search-input" placeholder="Type title..." oninput="handleTmdbSearch(this.value)">
           <div class="tmdb-results-dropdown" id="tmdb-dropdown"></div>
         </div>
 
@@ -330,12 +355,12 @@
 
         <div class="form-group col-4">
           <label>Original Title</label>
-          <input type="text" id="movie-orig-title" placeholder="Original Language Title">
+          <input type="text" id="movie-orig-title" placeholder="Native Language Title">
         </div>
 
         <div class="form-group col-2">
           <label>Release Year</label>
-          <input type="number" id="movie-year" value="2024" oninput="updateDashPreview()">
+          <input type="number" id="movie-year" value="2023" oninput="updateDashPreview()">
         </div>
 
         <div class="form-group col-2">
@@ -345,12 +370,12 @@
 
         <div class="form-group col-3">
           <label>Original Language</label>
-          <input type="text" id="movie-lang" value="en">
+          <input type="text" id="movie-lang" value="ta">
         </div>
 
         <div class="form-group col-3">
           <label>Runtime (Minutes)</label>
-          <input type="number" id="movie-runtime" value="120">
+          <input type="number" id="movie-runtime" value="165">
         </div>
 
         <div class="form-group col-3">
@@ -364,7 +389,7 @@
 
         <div class="form-group col-3">
           <label>IMDb ID</label>
-          <input type="text" id="movie-imdb-id" placeholder="tt1535108">
+          <input type="text" id="movie-imdb-id" placeholder="tt11663228">
         </div>
 
         <div class="form-group col-6">
@@ -379,7 +404,7 @@
 
         <div class="form-group col-12">
           <label>Genres Array (Kodi Categories) <span class="required">*</span></label>
-          <input type="text" id="movie-genres" placeholder="Action, Science Fiction, Drama, Kids" value="Action, Science Fiction, Drama" required>
+          <input type="text" id="movie-genres" placeholder="Action, Comedy, Drama" value="Action, Comedy" required>
         </div>
 
         <div class="form-group col-12">
@@ -391,30 +416,29 @@
           <label>Official Trailer (YouTube)</label>
           <div style="display:flex; gap:10px;">
             <input type="text" id="movie-trailer" placeholder="https://www.youtube.com/watch?v=..." style="flex:1;">
-            <button type="button" class="btn btn-govt-secondary" style="padding:0.4rem 1rem;" onclick="testTrailer()">Play Trailer ↗</button>
+            <button type="button" class="btn btn-govt-secondary" style="padding:0.4rem 1.2rem;" onclick="testTrailer()">Play Trailer ↗</button>
           </div>
         </div>
 
-        <!-- TOP 10 CAST DISPLAY WITH PHOTOS -->
         <div class="form-group col-12">
           <label>Top 10 Cast with Photos & Profile Links</label>
           <div class="cast-grid" id="cast-cards-container">
-            <div style="font-size:0.8rem; color:var(--text-muted); padding:10px;">No cast loaded. Enter TMDb ID to fetch cast.</div>
+            <div style="font-size:0.8rem; color:var(--text-muted); padding:10px;">No cast loaded. Paste raw filename to auto-fetch.</div>
           </div>
         </div>
       </div>
 
       <!-- PART III: TECHNICAL & EXPANDED OTT -->
       <div class="section-title">
-        <span>Part III: Technical Attributes & Expanded OTT Video Sources</span>
+        <span>Part III: Technical Attributes & Video Source Mapping</span>
       </div>
 
       <div class="form-grid">
         <div class="form-group col-3">
           <label>Resolution <span class="required">*</span></label>
           <select id="tech-resolution" onchange="updateDashPreview()">
-            <option value="1080p" selected>1080p FHD</option>
-            <option value="2160p">2160p 4K UHD</option>
+            <option value="2160p" selected>2160p 4K UHD</option>
+            <option value="1080p">1080p FHD</option>
             <option value="720p">720p HD</option>
           </select>
         </div>
@@ -422,33 +446,51 @@
         <div class="form-group col-3">
           <label>Video Source / OTT Platform</label>
           <select id="tech-source" onchange="handleSourceChange(this.value)">
-            <option value="BluRay" selected>BluRay / REMUX</option>
-            <option value="WEB-DL">WEB-DL (Generic)</option>
-            <option value="AMZN">Amazon Prime Video</option>
+            <option value="AMZN" selected>Amazon Prime Video (Amaz/AMZN)</option>
+            <option value="Sun NXT">Sun NXT</option>
             <option value="Netflix">Netflix</option>
             <option value="Hotstar">Disney+ Hotstar</option>
-            <option value="Sun NXT">Sun NXT</option>
             <option value="JioCinema">JioCinema</option>
             <option value="SonyLIV">SonyLIV</option>
             <option value="Aha">Aha</option>
             <option value="Zee5">Zee5</option>
             <option value="Apple TV+">Apple TV+</option>
+            <option value="BluRay">BluRay / REMUX</option>
+            <option value="WEB-DL">WEB-DL (Generic)</option>
           </select>
         </div>
 
         <div class="form-group col-3">
           <label>Source Image Asset Path</label>
-          <input type="text" id="tech-source-image" value="resources/images/sources/bluray.png" readonly style="background-color: #f1f5f9;">
+          <input type="text" id="tech-source-image" value="resources/images/sources/amazon.png" readonly style="background-color: rgba(255,255,255,0.05);">
         </div>
 
+        <!-- AUTO-PARSED OR MANUAL GB DROPDOWN -->
         <div class="form-group col-3">
-          <label>Clean Rounded Size</label>
-          <input type="text" id="tech-filesize" value="5 GB" oninput="updateDashPreview()">
+          <label>Clean Rounded Size (Auto or Select)</label>
+          <select id="tech-filesize-select" onchange="handleSizeSelect(this.value)">
+            <option value="1 GB">1 GB</option>
+            <option value="2 GB">2 GB</option>
+            <option value="3 GB">3 GB</option>
+            <option value="4 GB">4 GB</option>
+            <option value="5 GB" selected>5 GB</option>
+            <option value="6 GB">6 GB</option>
+            <option value="7 GB">7 GB</option>
+            <option value="8 GB">8 GB</option>
+            <option value="10 GB">10 GB</option>
+            <option value="12 GB">12 GB</option>
+            <option value="14 GB">14 GB</option>
+            <option value="16 GB">16 GB</option>
+            <option value="18 GB">18 GB</option>
+            <option value="20 GB">20 GB</option>
+            <option value="25 GB">25 GB</option>
+            <option value="30 GB">30 GB</option>
+          </select>
         </div>
 
         <div class="form-group col-12">
           <label>Expanded Multi-Audio Specifications</label>
-          <input type="text" id="tech-audio-specs" value="Tamil 2.0 - 224Kbps + Telugu 2.0 - 224Kbps + Hindi 5.1 - 640Kbps + English 5.1 - 384Kbps" oninput="updateDashPreview()">
+          <input type="text" id="tech-audio-specs" value="Tamil [DTS 5.1 - 1509Kbps]" oninput="updateDashPreview()">
         </div>
       </div>
 
@@ -537,7 +579,7 @@
     const ind = document.getElementById("pat-status-indicator");
     if (!t) {
       ind.textContent = "❌ Missing Token";
-      ind.style.color = "var(--govt-red)";
+      ind.style.color = "var(--laser-red)";
       return;
     }
     try {
@@ -547,14 +589,14 @@
       if (r.ok) {
         const u = await r.json();
         ind.textContent = `Active ✅ (${u.login})`;
-        ind.style.color = "var(--govt-green)";
+        ind.style.color = "var(--laser-green)";
       } else {
         ind.textContent = "❌ Bad Credentials";
-        ind.style.color = "var(--govt-red)";
+        ind.style.color = "var(--laser-red)";
       }
     } catch (_) {
       ind.textContent = "Active (Offline Check)";
-      ind.style.color = "var(--govt-green)";
+      ind.style.color = "var(--laser-green)";
     }
   }
 
@@ -586,43 +628,85 @@
     }
   }
 
-  // Strict Filename Parser (Fixes 1080p vs 2160p mismatch)
-  function autoParseRawSpecs(raw) {
+  /* ⚡ INSTANT 100% AUTO INGEST ENGINE */
+  let rawIngestDebounce = null;
+  function handleInstantRawIngest(raw) {
     if (!raw.trim()) return;
 
-    // 1. Resolution Check
+    // 1. Resolution
     const resSel = document.getElementById("tech-resolution");
-    if (/\b(2160p|4k|uhd)\b/i.test(raw)) {
-      resSel.value = "2160p";
-    } else if (/\b(720p)\b/i.test(raw)) {
-      resSel.value = "720p";
-    } else {
-      resSel.value = "1080p";
-    }
+    if (/\b(2160p|4k|uhd)\b/i.test(raw)) resSel.value = "2160p";
+    else if (/\b(720p)\b/i.test(raw)) resSel.value = "720p";
+    else resSel.value = "1080p";
 
-    // 2. Clean Size Rounding
-    let sz = "5 GB";
-    const sm = raw.match(/(\d+\.?\d*)\s*(gb|mb)/i);
-    if (sm) {
-      let num = parseFloat(sm[1]);
-      if (/mb/i.test(sm[0])) num = num / 1024;
-      sz = `${Math.round(num)} GB`;
-    }
-    document.getElementById("tech-filesize").value = sz;
-
-    // 3. Source Selection
-    const srcSel = document.getElementById("tech-source");
-    if (/sun\s*nxt|sunnxt/i.test(raw)) handleSourceChange("Sun NXT");
-    else if (/amzn|prime/i.test(raw)) handleSourceChange("AMZN");
+    // 2. Video Source / OTT (Checks Amaz, Prime, AMZN, Sun NXT)
+    if (/amaz|amzn|prime/i.test(raw)) handleSourceChange("AMZN");
+    else if (/sun\s*nxt|sunnxt/i.test(raw)) handleSourceChange("Sun NXT");
     else if (/nf|netflix/i.test(raw)) handleSourceChange("Netflix");
     else if (/hotstar|dsnp/i.test(raw)) handleSourceChange("Hotstar");
-    else if (/sonyliv/i.test(raw)) handleSourceChange("SonyLIV");
     else if (/jio/i.test(raw)) handleSourceChange("JioCinema");
+    else if (/sonyliv/i.test(raw)) handleSourceChange("SonyLIV");
     else if (/aha/i.test(raw)) handleSourceChange("Aha");
     else if (/zee5/i.test(raw)) handleSourceChange("Zee5");
     else if (/bluray|remux/i.test(raw)) handleSourceChange("BluRay");
     else handleSourceChange("WEB-DL");
 
+    // 3. Audio Specs detection (e.g. Tamil [DTS 5.1 - 1509Kbps])
+    const audioMatch = raw.match(/\[(.*?(?:DTS|Atmos|DDP|DD|AC3|AAC|1509Kbps|640Kbps).*?)\]/i) ||
+                       raw.match(/\b(Tamil|Telugu|Hindi|English)\s*\[(.*?)\]/i);
+    if (audioMatch) {
+      document.getElementById("tech-audio-specs").value = audioMatch[0].replace(/[\[\]]/g, '');
+    }
+
+    // 4. Clean Size Extraction or Dropdown selection
+    const sizeMatch = raw.match(/(\d+\.?\d*)\s*(gb|mb)/i);
+    if (sizeMatch) {
+      let num = parseFloat(sizeMatch[1]);
+      if (/mb/i.test(sizeMatch[0])) num = num / 1024;
+      let cleanGb = `${Math.round(num)} GB`;
+      selectDropdownValue("tech-filesize-select", cleanGb);
+    }
+
+    // 5. Clean Title & Year extraction for Auto TMDb Search
+    let clean = raw.replace(/\.(mkv|mp4|avi|ts)$/i, '').replace(/[\._\-]/g, ' ');
+    const ym = clean.match(/\b(19\d\d|20\d\d)\b/);
+    let year = ym ? ym[1] : '';
+    let cutoff = ym ? ym.index : clean.length;
+    let title = clean.substring(0, cutoff).trim();
+    title = title.replace(/\b(2160p|1080p|720p|4k|amaz|amzn|bluray|hevc|h265|x264|x265|dts|web|dl)\b/gi, '').trim();
+
+    updateDashPreview();
+
+    // Trigger Instant TMDb Lookup
+    clearTimeout(rawIngestDebounce);
+    rawIngestDebounce = setTimeout(async () => {
+      if (title.length > 1) {
+        showToast(`Auto-detecting TMDb match for "${title}" (${year})...`);
+        try {
+          const sRes = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(title)}${year ? `&year=${year}` : ''}`);
+          const sData = await sRes.json();
+          if (sData.results && sData.results.length > 0) {
+            const topMatch = sData.results[0];
+            document.getElementById("tmdb-id").value = topMatch.id;
+            fetchTmdbOfficialDetails(topMatch.id);
+          }
+        } catch (_) {}
+      }
+    }, 400);
+  }
+
+  function selectDropdownValue(id, val) {
+    const sel = document.getElementById(id);
+    for (let opt of sel.options) {
+      if (opt.value === val) {
+        sel.value = val;
+        updateDashPreview();
+        return;
+      }
+    }
+  }
+
+  function handleSizeSelect(val) {
     updateDashPreview();
   }
 
@@ -630,16 +714,16 @@
     document.getElementById("tech-source").value = val;
     const imgEl = document.getElementById("tech-source-image");
     const map = {
-      "BluRay": "resources/images/sources/bluray.png",
       "AMZN": "resources/images/sources/amazon.png",
+      "Sun NXT": "resources/images/sources/sunnxt.png",
       "Netflix": "resources/images/sources/netflix.png",
       "Hotstar": "resources/images/sources/hotstar.png",
-      "Sun NXT": "resources/images/sources/sunnxt.png",
       "JioCinema": "resources/images/sources/jiocinema.png",
       "SonyLIV": "resources/images/sources/sonyliv.png",
       "Aha": "resources/images/sources/aha.png",
       "Zee5": "resources/images/sources/zee5.png",
       "Apple TV+": "resources/images/sources/appletv.png",
+      "BluRay": "resources/images/sources/bluray.png",
       "WEB-DL": "resources/images/sources/web.png"
     };
     imgEl.value = map[val] || "resources/images/sources/web.png";
@@ -652,13 +736,13 @@
     const res = document.getElementById("tech-resolution").value;
     const src = document.getElementById("tech-source").value;
     const audio = document.getElementById("tech-audio-specs").value;
-    const sz = document.getElementById("tech-filesize").value;
+    const sz = document.getElementById("tech-filesize-select").value;
 
     document.getElementById("dash-name-preview").textContent = 
       `${title} (${year}) [${res}] [${src}] [${audio}] [${sz}].mkv`;
   }
 
-  // TOP 5 TMDb Search Dropdown
+  // TMDb Manual Search Dropdown
   let searchTimer = null;
   function handleTmdbSearch(val) {
     clearTimeout(searchTimer);
@@ -680,13 +764,13 @@
         top5.forEach(m => {
           const row = document.createElement("div");
           row.className = "tmdb-item-row";
-          const p = m.poster_path ? `https://image.tmdb.org/t/p/w92${m.poster_path}` : "https://via.placeholder.com/36x50?text=No";
+          const p = m.poster_path ? `https://image.tmdb.org/t/p/w92${m.poster_path}` : "https://via.placeholder.com/38x54?text=No";
           const yr = (m.release_date || "").split("-")[0];
           row.innerHTML = `
             <img src="${p}" alt="">
             <div>
-              <div style="font-weight:700; font-size:0.82rem; color:var(--govt-blue);">${m.title} (${yr})</div>
-              <div style="font-size:0.72rem; color:var(--text-muted);">TMDb ID: ${m.id} • Rating: ★ ${m.vote_average}</div>
+              <div style="font-weight:700; font-size:0.85rem; color:#fff;">${m.title} (${yr})</div>
+              <div style="font-size:0.74rem; color:var(--laser-cyan);">ID: ${m.id} • Rating: ★ ${m.vote_average}</div>
             </div>
           `;
           row.onclick = () => {
@@ -701,13 +785,12 @@
     }, 300);
   }
 
-  // Fetch Full TMDb + Cast with Photos & Profile Links
+  // Fetch Full TMDb + Cast + Artworks + Dynamic Fanart Backdrop
   async function fetchTmdbOfficialDetails(id) {
     if (!id) return;
-    showToast("Fetching complete official metadata, credits and 10 artworks...");
     try {
       const res = await fetch(`https://api.themoviedb.org/3/movie/${id}?api_key=${TMDB_KEY}&language=en-US&append_to_response=credits,release_dates,videos,external_ids`);
-      if (!res.ok) throw new Error("Movie ID not found on TMDb");
+      if (!res.ok) throw new Error("Movie not found");
       const d = await res.json();
 
       document.getElementById("movie-title").value = d.title || "";
@@ -718,6 +801,11 @@
       document.getElementById("movie-runtime").value = d.runtime || 120;
       document.getElementById("movie-plot").value = d.overview || "";
       document.getElementById("movie-imdb-id").value = d.external_ids?.imdb_id || d.imdb_id || "";
+
+      // Dynamic Fanart Wallpaper
+      if (d.backdrop_path) {
+        document.getElementById("dynamic-bg").style.backgroundImage = `url('https://image.tmdb.org/t/p/original${d.backdrop_path}')`;
+      }
 
       // Directors & Studios
       const directors = (d.credits?.crew || []).filter(c => c.job === "Director").map(c => c.name);
@@ -746,7 +834,7 @@
       loadedCastArray = [];
       const top10 = (d.credits?.cast || []).slice(0, 10);
       top10.forEach(c => {
-        const photo = c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : "https://via.placeholder.com/45x60?text=Actor";
+        const photo = c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : "https://via.placeholder.com/44x58?text=Actor";
         const tmdbPersonUrl = `https://www.themoviedb.org/person/${c.id}`;
         loadedCastArray.push({
           name: c.name,
@@ -768,7 +856,7 @@
         castWrap.appendChild(card);
       });
 
-      // 10 Artworks Fetch
+      // 10 Artworks
       if (d.poster_path) document.getElementById("art-poster").value = `https://image.tmdb.org/t/p/w780${d.poster_path}`;
       if (d.backdrop_path) {
         document.getElementById("art-fanart").value = `https://image.tmdb.org/t/p/original${d.backdrop_path}`;
@@ -792,7 +880,7 @@
       } catch (_) {}
 
       updateDashPreview();
-      showToast("Metadata, Top 10 Cast & Artworks successfully loaded!");
+      showToast(`100% Ingest Ready: "${d.title}" (${d.original_title || ''})`);
     } catch (e) {
       showToast(e.message, true);
     }
@@ -804,7 +892,7 @@
     else alert("Trailer link missing!");
   }
 
-  // Final Two-Tier Commit to GitHub
+  // Two-Tier Commit to GitHub
   async function handleFormSubmission(e) {
     e.preventDefault();
     const token = getToken();
@@ -829,7 +917,7 @@
     const res = document.getElementById("tech-resolution").value;
     const src = document.getElementById("tech-source").value;
     const srcImg = document.getElementById("tech-source-image").value;
-    const sz = document.getElementById("tech-filesize").value;
+    const sz = document.getElementById("tech-filesize-select").value;
     const audio = document.getElementById("tech-audio-specs").value;
     const dashName = document.getElementById("dash-name-preview").textContent;
     const streamUrl = `${WORKER_BASE}${driveId}${USER_AGENT}`;
