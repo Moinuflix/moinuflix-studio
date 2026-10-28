@@ -13,12 +13,12 @@ export async function POST(req: Request) {
     const headers = {
       Authorization: `Bearer ${GITHUB_TOKEN}`,
       Accept: "application/vnd.github.v3+json",
-      "User-Agent": "MoinuFlix-Ingestion-Engine"
+      "User-Agent": "MoinuFlix-Ingestion-Engine",
     };
 
-    // ROUTE 1: SONGS (chunks/data_c03.json)
+    // 1. ROUTE: 5.1 SONGS -> resources/data/data_c03.json
     if (category === "song") {
-      const songPath = "chunks/data_c03.json";
+      const songPath = "resources/data/data_c03.json";
       let songList: any[] = [];
       let songSha: string | undefined;
 
@@ -29,32 +29,32 @@ export async function POST(req: Request) {
         songList = JSON.parse(Buffer.from(sData.content, "base64").toString("utf-8"));
       }
 
-      songList.push({
-        id: String(movie.id),
+      songList.unshift({
+        id: String(movie.id || Date.now()),
         movie_title: movie.title,
-        song_title: rawFilename.replace(/\.mkv|\.mp4/i, ""),
-        artist: "Anirudh / Harris",
+        song_title: rawFilename ? rawFilename.replace(/\.mkv|\.mp4/i, "") : movie.title,
+        artist: "Anirudh / Harris / Yuvan",
         quality: "5.1 Surround",
         poster: movie.poster,
-        stream_url: `${WORKER_BASE}${versions[0]?.driveId}${USER_AGENT_TAG}`
+        stream_url: `${WORKER_BASE}${versions[0]?.driveId}${USER_AGENT_TAG}`,
       });
 
       await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${songPath}`, {
         method: "PUT",
         headers,
         body: JSON.stringify({
-          message: `Add song ${movie.title}`,
+          message: `Add 5.1 song ${movie.title} to ${songPath}`,
           content: Buffer.from(JSON.stringify(songList, null, 2)).toString("base64"),
-          sha: songSha
-        })
+          sha: songSha,
+        }),
       });
 
       return NextResponse.json({ success: true, target: songPath });
     }
 
-    // ROUTE 2: WEB SERIES (chunks/data_c02.json)
+    // 2. ROUTE: WEB SERIES -> resources/data/data_c02.json
     if (category === "series") {
-      const seriesPath = "chunks/data_c02.json";
+      const seriesPath = "resources/data/data_c02.json";
       let seriesList: any[] = [];
       let seriesSha: string | undefined;
 
@@ -65,32 +65,33 @@ export async function POST(req: Request) {
         seriesList = JSON.parse(Buffer.from(serData.content, "base64").toString("utf-8"));
       }
 
-      seriesList.push({
-        id: String(movie.id),
+      seriesList.unshift({
+        id: String(movie.id || Date.now()),
         name: rawFilename,
         title: movie.title,
         year: parseInt(movie.year, 10) || 2024,
         poster: movie.poster,
         fanart: movie.fanart,
-        clearlogo: specs.clearLogo,
-        stream_url: `${WORKER_BASE}${versions[0]?.driveId}${USER_AGENT_TAG}`
+        clearlogo: specs.clearLogo || "",
+        stream_url: `${WORKER_BASE}${versions[0]?.driveId}${USER_AGENT_TAG}`,
       });
 
       await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${seriesPath}`, {
         method: "PUT",
         headers,
         body: JSON.stringify({
-          message: `Add series ${movie.title}`,
+          message: `Add Web Series ${movie.title} to ${seriesPath}`,
           content: Buffer.from(JSON.stringify(seriesList, null, 2)).toString("base64"),
-          sha: seriesSha
-        })
+          sha: seriesSha,
+        }),
       });
 
       return NextResponse.json({ success: true, target: seriesPath });
     }
 
-    // ROUTE 3: MOVIES (catalog.json + chunks/chunk_XX.json - 50 Movies Limit)
-    const catalogRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/catalog.json`, { headers });
+    // 3. ROUTE: MOVIES -> resources/data/catalog.json & resources/data/chunks/chunk_XX.json
+    const catalogPath = "resources/data/catalog.json";
+    const catalogRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${catalogPath}`, { headers });
     let catalogContent: any = { movies: [] };
     let catalogSha: string | undefined;
 
@@ -101,8 +102,10 @@ export async function POST(req: Request) {
       catalogContent = Array.isArray(parsed) ? { movies: parsed } : (parsed.movies ? parsed : { movies: [] });
     }
 
-    const chunkNum = Math.floor(catalogContent.movies.length / 50) + 1;
-    const chunkFileName = `chunks/chunk_${String(chunkNum).padStart(2, "0")}.json`;
+    // 50-movie limit per chunk calculation
+    const totalMovies = catalogContent.movies.length;
+    const chunkNum = Math.floor(totalMovies / 50) + 1;
+    const chunkFileName = `resources/data/chunks/chunk_${String(chunkNum).padStart(2, "0")}.json`;
 
     let chunkMovies: any[] = [];
     let chunkSha: string | undefined;
@@ -117,72 +120,91 @@ export async function POST(req: Request) {
 
     const primaryStreamUrl = `${WORKER_BASE}${versions[0]?.driveId}${USER_AGENT_TAG}`;
 
-    const fullMovie = {
+    // Full Detailed Heavy Record (Tier 2 Chunk)
+    const fullMovieDetail = {
       id: String(movie.id),
       tmdb_id: movie.id,
-      name: rawFilename,
-      title: movie.title,
+      imdb_id: "tt" + String(movie.id),
+      name: rawFilename || `${movie.title} (${movie.year}).mkv`,
+      title: movie.title, // Clean Kodi Title
+      original_title: movie.title,
       year: parseInt(movie.year, 10) || 2024,
-      runtime: 120,
+      runtime: movie.runtime || 120,
+      certification: movie.cert || "UA",
       original_language: (movie.lang || "en").toLowerCase(),
+      collection: movie.collection || "",
+      genres: movie.genres || ["Action", "Drama"],
+      plot: movie.plot || "",
       artwork: {
         poster: movie.poster,
         fanart: movie.fanart,
-        clearlogo: specs.clearLogo,
-        banner: movie.fanart,
         landscape: movie.fanart,
-        thumbnail: movie.poster
+        keyart: specs.clearLogo || movie.poster,
+        banner: movie.fanart,
+        clearlogo: specs.clearLogo || "",
+        clearart: null,
+        thumbnail: movie.poster,
+        title_card: movie.fanart,
+        intertitle: null,
+        chapter_cards: [],
       },
       specs: specs,
       stream_url: primaryStreamUrl,
       versions: versions.map((v: any) => ({
         ...v,
-        stream_url: `${WORKER_BASE}${v.driveId}${USER_AGENT_TAG}`
-      }))
+        stream_url: `${WORKER_BASE}${v.driveId}${USER_AGENT_TAG}`,
+      })),
     };
 
+    // Duplicate prevention
     chunkMovies = chunkMovies.filter((m: any) => String(m.id) !== String(movie.id));
-    chunkMovies.push(fullMovie);
+    chunkMovies.push(fullMovieDetail);
 
+    // Save to resources/data/chunks/chunk_XX.json
     await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${chunkFileName}`, {
       method: "PUT",
       headers,
       body: JSON.stringify({
         message: `Add ${movie.title} to ${chunkFileName}`,
         content: Buffer.from(JSON.stringify({ movies: chunkMovies }, null, 2)).toString("base64"),
-        sha: chunkSha
-      })
+        sha: chunkSha,
+      }),
     });
 
+    // Save Lightweight Entry to resources/data/catalog.json (Tier 1)
     const catalogEntry = {
       id: String(movie.id),
       title: movie.title,
       year: parseInt(movie.year, 10) || 2024,
       poster: movie.poster,
       fanart: movie.fanart,
-      logo: specs.clearLogo,
+      logo: specs.clearLogo || "",
       rating: parseFloat(movie.rating) || 7.0,
       original_language: (movie.lang || "en").toLowerCase(),
-      genres: ["Action", "Drama"],
+      genres: movie.genres || ["Action", "Drama"],
       chunk_file: chunkFileName,
       primary_stream_url: primaryStreamUrl,
-      version_count: 1
+      version_count: versions.length,
     };
 
     catalogContent.movies = catalogContent.movies.filter((m: any) => String(m.id) !== String(movie.id));
     catalogContent.movies.push(catalogEntry);
 
-    await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/catalog.json`, {
+    await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${catalogPath}`, {
       method: "PUT",
       headers,
       body: JSON.stringify({
-        message: `Update catalog.json with ${movie.title}`,
+        message: `Update ${catalogPath} with ${movie.title}`,
         content: Buffer.from(JSON.stringify(catalogContent, null, 2)).toString("base64"),
-        sha: catalogSha
-      })
+        sha: catalogSha,
+      }),
     });
 
-    return NextResponse.json({ success: true, chunk: chunkFileName });
+    return NextResponse.json({
+      success: true,
+      id: movie.id,
+      chunk: chunkFileName,
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
