@@ -4,149 +4,213 @@ import React, { useState } from "react";
 const TMDB_KEY = "051ccf72e026820cb53b8b8531b6a2ba";
 const FANART_KEY = "b207628faa5a1fc82f7dc07575c224f7";
 
-export default function LedgerAutoFillStudio() {
-  // Input row fields (matching Ledger screenshot)
-  const [tmdbId, setTmdbId] = useState("");
+export default function SmartAutoFilterStudio() {
+  const [rawDriveInput, setRawDriveInput] = useState("");
   const [driveId, setDriveId] = useState("");
-  const [standardName, setStandardName] = useState("");
-  const [targetChunk, setTargetChunk] = useState("chunk_01.json");
-  const [category, setCategory] = useState<"MOVIE" | "SERIES" | "SONG">("MOVIE");
-
-  // Auto-filled States
-  const [cleanTitle, setCleanTitle] = useState("");
-  const [year, setYear] = useState("2024");
-  const [rating, setRating] = useState("7.5");
-  const [source, setSource] = useState("WEB-DL");
-  const [resolution, setResolution] = useState("1080p");
-  const [audioSpecs, setAudioSpecs] = useState("");
-  const [fileSize, setFileSize] = useState("10 GB");
-
-  // Artwork
-  const [poster, setPoster] = useState("");
-  const [fanart, setFanart] = useState("");
-  const [clearlogo, setClearlogo] = useState("");
-
+  const [step2Ready, setStep2Ready] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [committing, setCommitting] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
 
-  // Parse Standard Kodi Dash Name (e.g. Elysium (2013) [1080p] [BluRay] [Tamil 2.0 - 224Kbps] [5 GB].mkv)
-  const parseStandardDashName = (nameStr: string) => {
-    setStandardName(nameStr);
-    if (!nameStr) return;
+  // Step 2 Clean Parsed State
+  const [parsedData, setParsedData] = useState<any>({
+    cleanTitle: "",
+    year: "2024",
+    resolution: "1080p",
+    source: "BluRay",
+    audioString: "",
+    cleanSize: "5 GB",
+    standardDashName: "",
+    tmdbId: 0,
+    rating: "7.0",
+    poster: "",
+    fanart: "",
+    clearlogo: "",
+    targetChunk: "resources/data/chunks/chunk_01.json"
+  });
 
-    // 1. Resolution
-    if (/2160p|4k/i.test(nameStr)) setResolution("2160p 4K");
-    else if (/720p/i.test(nameStr)) setResolution("720p HD");
-    else setResolution("1080p FHD");
+  // Intelligent Regex Parser for Audio, Codec & Clean GB
+  const parseRawDriveName = (raw: string) => {
+    if (!raw.trim()) return null;
 
-    // 2. Source
-    if (/bluray/i.test(nameStr)) setSource("BluRay");
-    else if (/amzn|prime/i.test(nameStr)) setSource("Amazon Prime Video");
-    else if (/nf|netflix/i.test(nameStr)) setSource("Netflix");
-    else if (/hotstar|dsnp/i.test(nameStr)) setSource("Disney+ Hotstar");
-    else setSource("WEB-DL");
+    // 1. Title & Year
+    const yearMatch = raw.match(/\b(19\d\d|20\d\d)\b/);
+    const yr = yearMatch ? yearMatch[1] : "2024";
+    let titlePart = raw.split(/\b(19\d\d|20\d\d|1080p|2160p|4k|bluray|web-dl)\b/i)[0]
+      .replace(/[\._\-]/g, " ")
+      .trim();
 
-    // 3. Audio Specs inside square brackets
-    const audioMatch = nameStr.match(/\[([^\]]*(?:5\.1|2\.0|7\.1|Atmos|DTS|Kbps)[^\]]*)\]/i);
-    if (audioMatch) {
-      setAudioSpecs(audioMatch[1]);
-    }
+    // 2. Resolution & Source
+    let res = "1080p";
+    if (/2160p|4k/i.test(raw)) res = "2160p 4K";
+    else if (/720p/i.test(raw)) res = "720p";
 
-    // 4. Clean Size
-    const sizeMatch = nameStr.match(/\[(\d+\.?\d*\s*(?:GB|MB))\]/i);
+    let src = "WEB-DL";
+    if (/bluray/i.test(raw)) src = "BluRay";
+    else if (/amzn|prime/i.test(raw)) src = "AMZN";
+    else if (/nf|netflix/i.test(raw)) src = "Netflix";
+    else if (/hotstar|dsnp/i.test(raw)) src = "Hotstar";
+
+    // 3. Size Auto-Rounding (4.6GB -> 5 GB)
+    let cleanSize = "5 GB";
+    const sizeMatch = raw.match(/(\d+\.?\d*)\s*(?:gb|mb)/i);
     if (sizeMatch) {
-      setFileSize(sizeMatch[1]);
+      let num = parseFloat(sizeMatch[1]);
+      if (/mb/i.test(sizeMatch[0])) num = num / 1024;
+      cleanSize = `${Math.round(num)} GB`;
     }
+
+    // 4. Complex Multi-Audio Parser with Channels & Kbps
+    const parsedTracks: string[] = [];
+    const langMap: Record<string, string> = {
+      tam: "Tamil",
+      tamil: "Tamil",
+      tel: "Telugu",
+      telugu: "Telugu",
+      hin: "Hindi",
+      hindi: "Hindi",
+      eng: "English",
+      english: "English",
+      mal: "Malayalam",
+      kan: "Kannada"
+    };
+
+    // Extract inside brackets or tags
+    const bracketContent = raw.match(/\[(.*?)\]/);
+    const searchArea = bracketContent ? bracketContent[1] : raw;
+
+    Object.keys(langMap).forEach((key) => {
+      const reg = new RegExp(`\\b${key}\\b`, "i");
+      if (reg.test(searchArea)) {
+        const fullLang = langMap[key];
+        if (!parsedTracks.some(t => t.startsWith(fullLang))) {
+          // Detect channels & bitrate nearby
+          let ch = "5.1";
+          if (new RegExp(`${key}[^\\+\\)]*2\\.0`, "i").test(searchArea)) ch = "2.0";
+          else if (new RegExp(`${key}[^\\+\\)]*7\\.1`, "i").test(searchArea)) ch = "7.1";
+
+          let br = "640Kbps";
+          const brMatch = searchArea.match(new RegExp(`${key}[^\\+\\)]*?(\\d{3,4})\\s*k`, "i"));
+          if (brMatch) br = `${brMatch[1]}Kbps`;
+          else if (ch === "2.0") br = "224Kbps";
+
+          parsedTracks.push(`${fullLang} ${ch} - ${br}`);
+        }
+      }
+    });
+
+    const finalAudio = parsedTracks.length > 0 ? parsedTracks.join(" + ") : "Tamil 5.1 - 640Kbps";
+    const standardDashName = `${titlePart} (${yr}) [${res.split(" ")[0]}] [${src}] [${finalAudio}] [${cleanSize}].mkv`;
+
+    return {
+      cleanTitle: titlePart,
+      year: yr,
+      resolution: res,
+      source: src,
+      audioString: finalAudio,
+      cleanSize,
+      standardDashName
+    };
   };
 
-  // 1-Click Auto Fill from TMDB ID
-  const handleAutoFillFromTmdb = async () => {
-    if (!tmdbId.trim()) return alert("Pehle TMDB ID enter karein!");
+  // Step 2 Trigger: Trigger from Raw GDrive Name -> Auto Filter -> TMDb Match
+  const triggerAutoFilterPipeline = async () => {
+    if (!rawDriveInput.trim()) return alert("Pehle raw Google Drive name paste karein!");
     setLoading(true);
-    setStatusMsg("⚡ Fetching TMDB details, IMDb ID & ClearLogo...");
+    setStatusMsg("⚡ Filtering specs & searching TMDb/Fanart...");
+
+    const parsed = parseRawDriveName(rawDriveInput);
+    if (!parsed) {
+      setLoading(false);
+      return;
+    }
 
     try {
-      const endpoint = category === "SERIES" ? "tv" : "movie";
-      const res = await fetch(`https://api.themoviedb.org/3/${endpoint}/${tmdbId.trim()}?api_key=${TMDB_KEY}&language=en-US`);
-      if (!res.ok) throw new Error("TMDB ID not found");
-      const d = await res.json();
+      // TMDb Match
+      const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(parsed.cleanTitle)}&year=${parsed.year}&language=en-US`);
+      const data = await res.json();
+      const top = data.results?.[0];
 
-      const movieTitle = d.title || d.name || "";
-      const relYear = (d.release_date || d.first_air_date || "2024").split("-")[0];
-      setCleanTitle(movieTitle);
-      setYear(relYear);
-      setRating(d.vote_average ? d.vote_average.toFixed(1) : "7.5");
+      let poster = "";
+      let fanart = "";
+      let tmdbId = 0;
+      let rating = "7.2";
+      let logo = "";
 
-      if (d.poster_path) setPoster(`https://image.tmdb.org/t/p/w500${d.poster_path}`);
-      if (d.backdrop_path) setFanart(`https://image.tmdb.org/t/p/original${d.backdrop_path}`);
+      if (top) {
+        tmdbId = top.id;
+        rating = top.vote_average ? top.vote_average.toFixed(1) : "7.2";
+        if (top.poster_path) poster = `https://image.tmdb.org/t/p/w500${top.poster_path}`;
+        if (top.backdrop_path) fanart = `https://image.tmdb.org/t/p/original${top.backdrop_path}`;
 
-      // Fanart ClearLogo
-      try {
-        const fRes = await fetch(`https://webservice.fanart.tv/v3/${category === "SERIES" ? "tv" : "movies"}/${tmdbId.trim()}?api_key=${FANART_KEY}`);
-        if (fRes.ok) {
-          const fData = await fRes.json();
-          const logo = fData.hdmovielogo?.[0]?.url || fData.movielogo?.[0]?.url || fData.hdtvlogo?.[0]?.url || "";
-          if (logo) setClearlogo(logo);
-        }
-      } catch (_) {}
-
-      // Agar standard name abhi tak khali hai toh auto-generate kar dein
-      if (!standardName) {
-        const autoDash = `${movieTitle} (${relYear}) [${resolution.split(" ")[0]}] [${source}] [${audioSpecs || "Tamil 5.1 - 640Kbps"}] [${fileSize}].mkv`;
-        setStandardName(autoDash);
+        // Fanart ClearLogo
+        try {
+          const fRes = await fetch(`https://webservice.fanart.tv/v3/movies/${top.id}?api_key=${FANART_KEY}`);
+          if (fRes.ok) {
+            const fData = await fRes.json();
+            logo = fData.hdmovielogo?.[0]?.url || fData.movielogo?.[0]?.url || "";
+          }
+        } catch (_) {}
       }
 
-      setStatusMsg("✅ Metadata & Artworks successfully auto-filled!");
-    } catch (e: any) {
-      setStatusMsg(`❌ Error: ${e.message}`);
+      setParsedData({
+        ...parsed,
+        tmdbId,
+        rating,
+        poster,
+        fanart,
+        clearlogo: logo,
+        targetChunk: "resources/data/chunks/chunk_01.json"
+      });
+
+      setStep2Ready(true);
+      setStatusMsg("✅ Step 2 Ready: Auto-filtered to Standard Dash format & Metadata confirmed!");
+    } catch (err: any) {
+      setStatusMsg(`❌ Error: ${err.message}`);
     }
     setLoading(false);
   };
 
-  // Submit to Backend (Targeting resources/data/catalog.json and Target Chunk)
-  const handleCommitToLibrary = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Final Commit to resources/data/
+  const handleCommitToLibrary = async () => {
     if (!driveId.trim()) return alert("Google Drive File ID enter karein!");
-
-    setSubmitting(true);
-    setStatusMsg(`Committing to resources/data/chunks/${targetChunk}...`);
+    setCommitting(true);
+    setStatusMsg("Committing to resources/data/catalog.json and chunk_01.json...");
 
     const payload = {
       movie: {
-        id: parseInt(tmdbId, 10) || Date.now(),
-        title: cleanTitle || standardName.split(" (")[0],
-        year,
+        id: parsedData.tmdbId || Date.now(),
+        title: parsedData.cleanTitle,
+        year: parsedData.year,
         runtime: 120,
-        rating,
+        rating: parsedData.rating,
         cert: "UA",
         lang: "ta",
-        poster,
-        fanart,
-        plot: "Standard Library Stream",
-        genres: ["Action"]
+        poster: parsedData.poster,
+        fanart: parsedData.fanart,
+        plot: "Auto-ingested standard movie release",
+        genres: ["Action", "Sci-Fi"]
       },
       specs: {
-        source,
-        audioCodec: audioSpecs || "Tamil 5.1 - 640Kbps",
-        fileSize,
-        resolution: resolution.split(" ")[0],
-        audioTrackString: audioSpecs || "Tamil 5.1 - 640Kbps",
-        clearLogo: clearlogo
+        source: parsedData.source,
+        audioCodec: parsedData.audioString,
+        fileSize: parsedData.cleanSize,
+        resolution: parsedData.resolution.split(" ")[0],
+        audioTrackString: parsedData.audioString,
+        clearLogo: parsedData.clearlogo
       },
       versions: [
         {
           language: "Tamil",
-          resolution: resolution.split(" ")[0],
-          source,
-          audio: audioSpecs || "Tamil 5.1 - 640Kbps",
-          size: fileSize,
+          resolution: parsedData.resolution.split(" ")[0],
+          source: parsedData.source,
+          audio: parsedData.audioString,
+          size: parsedData.cleanSize,
           driveId: driveId.trim()
         }
       ],
-      rawFilename: standardName,
-      targetChunkFile: `resources/data/chunks/${targetChunk}`,
-      category: category.toLowerCase()
+      rawFilename: parsedData.standardDashName,
+      category: "movie"
     };
 
     try {
@@ -157,40 +221,34 @@ export default function LedgerAutoFillStudio() {
       });
       const data = await res.json();
       if (data.success) {
-        setStatusMsg(`🎉 SUCCESS! Committed to resources/data/catalog.json & ${targetChunk}!`);
-        // Reset inputs for next row
-        setTmdbId("");
+        setStatusMsg("🎉 ALL STEP COMPLETE! Successfully committed to resources/data/!");
+        setStep2Ready(false);
+        setRawDriveInput("");
         setDriveId("");
-        setStandardName("");
-        setAudioSpecs("");
-        setPoster("");
-        setFanart("");
-        setClearlogo("");
       } else {
-        setStatusMsg(`❌ Failed: ${data.error}`);
+        setStatusMsg(`❌ Save failed: ${data.error}`);
       }
-    } catch (err: any) {
-      setStatusMsg(`❌ Network Error: ${err.message}`);
+    } catch (e: any) {
+      setStatusMsg(`❌ Network error: ${e.message}`);
     }
-    setSubmitting(false);
+    setCommitting(false);
   };
 
   return (
-    <div className="min-h-screen bg-[#040711] text-slate-100 p-4 md:p-8 font-sans">
+    <div className="min-h-screen bg-[#040711] text-slate-100 p-6 font-sans">
       <div className="max-w-4xl mx-auto space-y-6">
-        {/* Top Ledger Header */}
+        
+        {/* Banner */}
         <div className="bg-[#0c1322] border border-sky-500/20 rounded-2xl p-5 shadow-xl flex justify-between items-center">
           <div>
-            <h1 className="text-xl font-black text-white flex items-center gap-2">
-              <span className="bg-red-600 px-2 py-0.5 rounded text-xs">MOINUFLIX</span>
-              Master Ledger Auto-Fill Ingestion
-            </h1>
-            <p className="text-xs text-sky-400 font-mono mt-1">
-              Ledger Row → 1-Click Auto Fill → Direct Target Chunk Commit
-            </p>
+            <div className="flex items-center gap-3">
+              <span className="bg-red-600 px-2 py-0.5 rounded text-xs font-black">MOINUFLIX</span>
+              <h1 className="text-lg font-black text-white">Drive Name Auto-Filter Pipeline</h1>
+            </div>
+            <p className="text-xs text-sky-400 font-mono mt-1">Raw Drive Format ➔ Standard Kodi Dash Name Auto-Filter</p>
           </div>
           <span className="text-xs font-mono bg-slate-900 border border-slate-700 px-3 py-1 rounded-xl text-emerald-400 font-bold">
-            Target: resources/data/
+            resources/data/
           </span>
         </div>
 
@@ -200,123 +258,121 @@ export default function LedgerAutoFillStudio() {
           </div>
         )}
 
-        {/* LEDGER ROW INPUT BOX */}
-        <form onSubmit={handleCommitToLibrary} className="bg-[#080e1c] border border-sky-500/20 rounded-3xl p-6 md:p-8 shadow-2xl space-y-6">
-          <div className="border-b border-slate-800 pb-3">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-cyan-400">
-              📋 Step 1: Copy-Paste Values From Your Ledger PDF Row
+        {/* STEP 1: RAW DRIVE INPUT */}
+        <div className="bg-[#080e1c] border border-sky-500/20 rounded-3xl p-6 shadow-2xl space-y-4">
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-xs flex items-center justify-center">1</span>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+              Paste Raw Google Drive Name (With Audio Specs & Size)
             </h2>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-            <div>
-              <label className="text-[11px] font-bold text-slate-400 block mb-1">CAT</label>
-              <select
-                value={category}
-                onChange={(e: any) => setCategory(e.target.value)}
-                className="w-full bg-[#0d1626] border border-sky-500/30 p-2.5 rounded-xl text-xs font-bold text-white"
-              >
-                <option value="MOVIE">MOVIE</option>
-                <option value="SERIES">SERIES</option>
-                <option value="SONG">SONG</option>
-              </select>
-            </div>
+          <textarea
+            rows={3}
+            placeholder="e.g. Elysium (2013) 1080p BluRay x264 [Tamil + Tel (DD 2.0 - 224k) + Hin (DD+5.1 - 640k) + Eng (DD+5.1 - 384k)] 4.6GB"
+            value={rawDriveInput}
+            onChange={(e) => setRawDriveInput(e.target.value)}
+            className="w-full bg-[#0d1626] border border-sky-500/30 rounded-xl p-3 text-xs font-mono text-white focus:outline-none focus:border-cyan-400 placeholder-slate-600"
+          />
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-[11px] font-bold text-amber-400 block mb-1">TMDB ID</label>
-              <input
-                type="number"
-                placeholder="e.g. 68724"
-                value={tmdbId}
-                onChange={(e) => setTmdbId(e.target.value)}
-                className="w-full bg-[#0d1626] border border-amber-500/40 p-2.5 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-amber-400"
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="text-[11px] font-bold text-cyan-400 block mb-1">GOOGLE DRIVE FILE ID</label>
+              <label className="text-[10px] text-slate-400 block mb-1">Google Drive File ID</label>
               <input
                 type="text"
                 placeholder="e.g. 1weC0Qp05eEMwTb0Q17krWXGcM5SDFVV0"
                 value={driveId}
                 onChange={(e) => setDriveId(e.target.value)}
-                className="w-full bg-[#0d1626] border border-cyan-500/40 p-2.5 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-cyan-400"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-[11px] font-bold text-slate-400 block mb-1">
-              STANDARD KODI DASH NAME (CHANNEL - KBPS)
-            </label>
-            <input
-              type="text"
-              placeholder="e.g. Elysium (2013) [1080p] [BluRay] [Tamil 2.0 - 224Kbps + Telugu 2.0 - 224Kbps + Hindi 5.1 - 640Kbps] [5 GB].mkv"
-              value={standardName}
-              onChange={(e) => parseStandardDashName(e.target.value)}
-              className="w-full bg-[#0d1626] border border-sky-500/30 p-2.5 rounded-xl text-xs font-mono text-emerald-300"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[11px] font-bold text-purple-400 block mb-1">TARGET CHUNK</label>
-              <input
-                type="text"
-                value={targetChunk}
-                onChange={(e) => setTargetChunk(e.target.value)}
-                placeholder="e.g. chunk_01.json"
-                className="w-full bg-[#0d1626] border border-purple-500/40 p-2.5 rounded-xl text-xs font-mono text-purple-300 font-bold"
+                className="w-full bg-[#0d1626] border border-sky-500/30 rounded-xl p-2.5 text-xs font-mono text-white"
               />
             </div>
             <div className="flex items-end">
               <button
                 type="button"
-                onClick={handleAutoFillFromTmdb}
+                onClick={triggerAutoFilterPipeline}
                 disabled={loading}
-                className="w-full bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-extrabold py-2.5 rounded-xl text-xs shadow transition"
+                className="w-full bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-extrabold py-2.5 rounded-xl text-xs transition shadow-lg"
               >
-                {loading ? "Fetching TMDB..." : "⚡ 1-Click Auto Fill Metadata & Artwork"}
+                {loading ? "Parsing & Matching..." : "⚡ Trigger Auto-Filter & TMDb Ingest"}
               </button>
             </div>
           </div>
+        </div>
 
-          {/* VERIFICATION & PREVIEW SECTION */}
-          {(cleanTitle || poster) && (
-            <div className="bg-[#0d1626] border border-slate-800 rounded-2xl p-4 space-y-4">
-              <div className="flex items-start gap-4">
-                {poster && <img src={poster} className="w-16 h-24 object-cover rounded-lg border border-slate-700 shadow" alt="" />}
-                <div className="space-y-1 overflow-hidden flex-1">
-                  <div className="text-sm font-black text-white">{cleanTitle} ({year})</div>
-                  <div className="flex gap-2 text-xs font-bold text-slate-400">
-                    <span className="text-amber-400">★ {rating}</span>
-                    <span>•</span>
-                    <span className="text-cyan-400">{resolution}</span>
-                    <span>•</span>
-                    <span>{source}</span>
-                    <span>•</span>
-                    <span className="text-red-400">{fileSize}</span>
-                  </div>
-                  <div className="text-xs font-mono text-emerald-400 truncate">{audioSpecs || "Standard Multi Audio"}</div>
-                  {clearlogo && (
-                    <div className="pt-1">
-                      <img src={clearlogo} className="h-8 object-contain bg-black/40 px-2 py-0.5 rounded border border-slate-800" alt="" />
-                    </div>
-                  )}
-                </div>
+        {/* STEP 2: VERIFICATION & AUTO-FILL CONFIRMATION */}
+        {step2Ready && (
+          <div className="bg-[#080e1c] border border-emerald-500/40 rounded-3xl p-6 shadow-2xl space-y-6 animate-fadeIn">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-emerald-500 text-black font-black text-xs flex items-center justify-center">2</span>
+                <h2 className="text-xs font-extrabold uppercase tracking-wider text-emerald-400">
+                  Step 2: Auto-Filtered Standard Kodi Dash Result (Ready to Commit)
+                </h2>
+              </div>
+              <span className="bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-mono px-2 py-0.5 rounded font-bold">
+                ✓ ALL FIELDS AUTO-FILLED
+              </span>
+            </div>
+
+            {/* Standard Dash Box */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-400 block mb-1">
+                Standard Kodi Dash File Name (Auto-Cleaned & Expanded)
+              </label>
+              <div className="bg-[#050b16] border border-emerald-500/30 p-3 rounded-xl font-mono text-xs text-emerald-300 break-all">
+                {parsedData.standardDashName}
               </div>
             </div>
-          )}
 
-          {/* COMMIT BUTTON */}
-          <button
-            type="submit"
-            disabled={submitting || !driveId.trim()}
-            className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:opacity-95 text-black font-black py-4 rounded-2xl text-xs uppercase tracking-wider shadow-2xl transition disabled:opacity-50"
-          >
-            {submitting ? "Writing to GitHub..." : `🚀 COMMIT TO ${targetChunk.toUpperCase()} (STEP 8)`}
-          </button>
-        </form>
+            {/* Visual Metadata & Signals Card */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center bg-[#0d1626] p-4 rounded-2xl border border-slate-800">
+              <div className="md:col-span-3">
+                {parsedData.poster ? (
+                  <img src={parsedData.poster} className="w-24 h-36 object-cover rounded-xl shadow border border-slate-700" alt="" />
+                ) : (
+                  <div className="w-24 h-36 bg-slate-900 rounded-xl border border-slate-800 flex items-center justify-center text-xs text-slate-600">No Poster</div>
+                )}
+              </div>
+
+              <div className="md:col-span-9 space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-base font-black text-white">{parsedData.cleanTitle} ({parsedData.year})</h3>
+                  <span className="text-amber-400 text-xs font-bold">★ {parsedData.rating}</span>
+                  <span className="bg-sky-950 text-cyan-300 border border-sky-800 text-[10px] font-bold px-2 py-0.5 rounded">
+                    TMDb: {parsedData.tmdbId}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-2 text-xs font-mono">
+                  <span className="bg-slate-800 text-cyan-400 px-2 py-0.5 rounded border border-slate-700">{parsedData.resolution}</span>
+                  <span className="bg-slate-800 text-amber-400 px-2 py-0.5 rounded border border-slate-700">{parsedData.source}</span>
+                  <span className="bg-red-950 text-red-300 px-2 py-0.5 rounded border border-red-800 font-bold">{parsedData.cleanSize}</span>
+                  <span className="bg-purple-950 text-purple-300 px-2 py-0.5 rounded border border-purple-800">Target: chunk_01.json</span>
+                </div>
+
+                <div className="text-xs font-mono text-emerald-400">
+                  <b>Audio:</b> {parsedData.audioString}
+                </div>
+
+                {parsedData.clearlogo && (
+                  <div className="pt-1">
+                    <img src={parsedData.clearlogo} className="h-8 object-contain bg-black/40 px-2 py-0.5 rounded border border-slate-700" alt="" />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Final Commit Button */}
+            <button
+              onClick={handleCommitToLibrary}
+              disabled={committing}
+              className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:opacity-95 text-black font-black py-4 rounded-2xl text-xs uppercase tracking-wider shadow-2xl transition disabled:opacity-50"
+            >
+              {committing ? "Writing to resources/data/..." : "🚀 SAVE TO JSON & COMMIT TO GITHUB (FINAL STEP)"}
+            </button>
+          </div>
+        )}
+
       </div>
     </div>
   );
