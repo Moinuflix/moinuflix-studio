@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    const { movie, specs, versions, rawFilename } = await req.json();
+    const { movie, specs, versions, rawFilename, category } = await req.json();
 
     const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
     const REPO_OWNER = process.env.GITHUB_REPO_OWNER || "Moinuflix";
@@ -10,21 +10,87 @@ export async function POST(req: Request) {
     const WORKER_BASE = process.env.CLOUDFLARE_WORKER_BASE || "https://gdrive-stream.moinudeentv.workers.dev/?id=";
     const USER_AGENT_TAG = "|User-Agent=Kodi-MoinuTV-PrivatePlayer/1.0";
 
-    if (!GITHUB_TOKEN) {
-      return NextResponse.json({ error: "Missing GITHUB_TOKEN in env" }, { status: 500 });
-    }
-
     const headers = {
       Authorization: `Bearer ${GITHUB_TOKEN}`,
       Accept: "application/vnd.github.v3+json",
-      "User-Agent": "MoinuFlix-Admin-Engine"
+      "User-Agent": "MoinuFlix-Ingestion-Engine"
     };
 
-    // 1. Fetch catalog.json
-    const catalogRes = await fetch(
-      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/catalog.json`,
-      { headers }
-    );
+    // ROUTE 1: SONGS (chunks/data_c03.json)
+    if (category === "song") {
+      const songPath = "chunks/data_c03.json";
+      let songList: any[] = [];
+      let songSha: string | undefined;
+
+      const sRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${songPath}`, { headers });
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        songSha = sData.sha;
+        songList = JSON.parse(Buffer.from(sData.content, "base64").toString("utf-8"));
+      }
+
+      songList.push({
+        id: String(movie.id),
+        movie_title: movie.title,
+        song_title: rawFilename.replace(/\.mkv|\.mp4/i, ""),
+        artist: "Anirudh / Harris",
+        quality: "5.1 Surround",
+        poster: movie.poster,
+        stream_url: `${WORKER_BASE}${versions[0]?.driveId}${USER_AGENT_TAG}`
+      });
+
+      await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${songPath}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          message: `Add song ${movie.title}`,
+          content: Buffer.from(JSON.stringify(songList, null, 2)).toString("base64"),
+          sha: songSha
+        })
+      });
+
+      return NextResponse.json({ success: true, target: songPath });
+    }
+
+    // ROUTE 2: WEB SERIES (chunks/data_c02.json)
+    if (category === "series") {
+      const seriesPath = "chunks/data_c02.json";
+      let seriesList: any[] = [];
+      let seriesSha: string | undefined;
+
+      const serRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${seriesPath}`, { headers });
+      if (serRes.ok) {
+        const serData = await serRes.json();
+        seriesSha = serData.sha;
+        seriesList = JSON.parse(Buffer.from(serData.content, "base64").toString("utf-8"));
+      }
+
+      seriesList.push({
+        id: String(movie.id),
+        name: rawFilename,
+        title: movie.title,
+        year: parseInt(movie.year, 10) || 2024,
+        poster: movie.poster,
+        fanart: movie.fanart,
+        clearlogo: specs.clearLogo,
+        stream_url: `${WORKER_BASE}${versions[0]?.driveId}${USER_AGENT_TAG}`
+      });
+
+      await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${seriesPath}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          message: `Add series ${movie.title}`,
+          content: Buffer.from(JSON.stringify(seriesList, null, 2)).toString("base64"),
+          sha: seriesSha
+        })
+      });
+
+      return NextResponse.json({ success: true, target: seriesPath });
+    }
+
+    // ROUTE 3: MOVIES (catalog.json + chunks/chunk_XX.json - 50 Movies Limit)
+    const catalogRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/catalog.json`, { headers });
     let catalogContent: any = { movies: [] };
     let catalogSha: string | undefined;
 
@@ -35,19 +101,13 @@ export async function POST(req: Request) {
       catalogContent = Array.isArray(parsed) ? { movies: parsed } : (parsed.movies ? parsed : { movies: [] });
     }
 
-    // 2. Calculate Chunk File (50 Movies limit per chunk)
-    const totalMovies = catalogContent.movies.length;
-    const chunkNum = Math.floor(totalMovies / 50) + 1;
+    const chunkNum = Math.floor(catalogContent.movies.length / 50) + 1;
     const chunkFileName = `chunks/chunk_${String(chunkNum).padStart(2, "0")}.json`;
 
-    // 3. Fetch or Create Target Chunk File
     let chunkMovies: any[] = [];
     let chunkSha: string | undefined;
 
-    const chunkRes = await fetch(
-      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${chunkFileName}`,
-      { headers }
-    );
+    const chunkRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${chunkFileName}`, { headers });
     if (chunkRes.ok) {
       const chunkData = await chunkRes.json();
       chunkSha = chunkData.sha;
@@ -55,100 +115,35 @@ export async function POST(req: Request) {
       chunkMovies = parsedChunk.movies || [];
     }
 
-    // Format versions with Cloudflare stream URLs
-    const formattedVersions = versions.map((v: any) => ({
-      id: v.driveId,
-      name: `${movie.title} (${movie.year}) [${v.resolution}] [${v.source}] [${v.language} ${v.channels} - ${specs.audioBitrate}] [${v.size}].mkv`,
-      language: v.language,
-      dubbed: v.dubbed || "Original Track",
-      quality: v.resolution,
-      resolution: v.resolution,
-      source: v.source,
-      codec: v.codec,
-      audio: v.audio,
-      channels: v.channels,
-      bitrate: specs.audioBitrate,
-      size: v.size,
-      stream_url: `${WORKER_BASE}${v.driveId}${USER_AGENT_TAG}`
-    }));
+    const primaryStreamUrl = `${WORKER_BASE}${versions[0]?.driveId}${USER_AGENT_TAG}`;
 
-    const primaryStreamUrl = formattedVersions[0]?.stream_url || "";
-
-    // Step 5: Full Detailed Movie Record (Heavy Tier 2)
-    const fullMovieDetail = {
+    const fullMovie = {
       id: String(movie.id),
       tmdb_id: movie.id,
-      imdb_id: "tt" + String(movie.id),
-      name: rawFilename || formattedVersions[0]?.name || `${movie.title} (${movie.year}).mkv`,
-      title: movie.title, // Clean Kodi title
-      original_title: movie.title,
+      name: rawFilename,
+      title: movie.title,
       year: parseInt(movie.year, 10) || 2024,
-      runtime: movie.runtime || 120,
-      release_date: `${movie.year}-01-01`,
-      certification: movie.cert || "UA",
+      runtime: 120,
       original_language: (movie.lang || "en").toLowerCase(),
-      genres: movie.genres || ["Action", "Drama"],
-      tagline: "",
-      plot: movie.plot || "",
-      country: ["India"],
-      studio: ["MoinuFlix Cinema"],
-      director: [{ name: "Director" }],
-      writers: [{ name: "Writer" }],
-      cast: [
-        {
-          name: "Lead Actor",
-          character: "Hero",
-          profile: null
-        }
-      ],
       artwork: {
         poster: movie.poster,
         fanart: movie.fanart,
-        landscape: movie.fanart,
-        keyart: specs.clearLogo || movie.poster,
-        banner: movie.fanart,
         clearlogo: specs.clearLogo,
-        clearart: null,
-        thumbnail: movie.poster,
-        title_card: movie.fanart,
-        intertitle: null,
-        chapter_cards: [],
-        character_art: [],
-        extra_posters: [],
-        extra_backdrops: []
+        banner: movie.fanart,
+        landscape: movie.fanart,
+        thumbnail: movie.poster
       },
-      trailer: "",
-      ratings: [
-        { source: "TMDb", value: parseFloat(movie.rating) || 7.0, out_of: 10 },
-        { source: "IMDb", value: parseFloat(movie.rating) || 7.0, out_of: 10 }
-      ],
-      badges: {
-        quality: `https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/resolution/${specs.resolution.toLowerCase().includes("2160") ? "2160p" : "1080p"}.png`,
-        hdr: "",
-        source: `https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/source/${specs.source.toLowerCase()}.png`,
-        audio_format: "https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/audio/atmos.png",
-        audio_channels: "https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/audio/5.1.png"
-      },
-      specs: {
-        resolution: specs.resolution,
-        source: specs.source,
-        codec: specs.codec,
-        bit_depth: specs.colorDepth,
-        audio: specs.audioCodec,
-        channels: "5.1",
-        bitrate: specs.audioBitrate,
-        languages: Array.from(new Set(formattedVersions.map((v: any) => v.language))).join("-"),
-        size: specs.fileSize
-      },
+      specs: specs,
       stream_url: primaryStreamUrl,
-      versions: formattedVersions
+      versions: versions.map((v: any) => ({
+        ...v,
+        stream_url: `${WORKER_BASE}${v.driveId}${USER_AGENT_TAG}`
+      }))
     };
 
-    // Prevent duplicate entries in chunk
     chunkMovies = chunkMovies.filter((m: any) => String(m.id) !== String(movie.id));
-    chunkMovies.push(fullMovieDetail);
+    chunkMovies.push(fullMovie);
 
-    // Save Chunk file to GitHub
     await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${chunkFileName}`, {
       method: "PUT",
       headers,
@@ -159,7 +154,6 @@ export async function POST(req: Request) {
       })
     });
 
-    // Step 5: Lightweight Catalog Entry (Tier 1)
     const catalogEntry = {
       id: String(movie.id),
       title: movie.title,
@@ -169,30 +163,15 @@ export async function POST(req: Request) {
       logo: specs.clearLogo,
       rating: parseFloat(movie.rating) || 7.0,
       original_language: (movie.lang || "en").toLowerCase(),
-      genres: movie.genres || ["Action", "Drama"],
+      genres: ["Action", "Drama"],
       chunk_file: chunkFileName,
       primary_stream_url: primaryStreamUrl,
-      available_languages: Array.from(new Set(formattedVersions.map((v: any) => v.language))),
-      version_count: formattedVersions.length,
-      available_versions: formattedVersions.map((v: any) => ({
-        language: v.language,
-        quality: v.quality,
-        source: v.source,
-        source_image: `resources/images/sources/${v.source.toLowerCase()}.png`,
-        format: v.source,
-        codec: v.codec,
-        audio: v.audio,
-        channels: v.channels,
-        bitrate: v.bitrate,
-        size: v.size
-      }))
+      version_count: 1
     };
 
-    // Prevent duplicate entries in catalog
     catalogContent.movies = catalogContent.movies.filter((m: any) => String(m.id) !== String(movie.id));
     catalogContent.movies.push(catalogEntry);
 
-    // Save catalog.json to GitHub
     await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/catalog.json`, {
       method: "PUT",
       headers,
@@ -203,11 +182,7 @@ export async function POST(req: Request) {
       })
     });
 
-    return NextResponse.json({
-      success: true,
-      id: movie.id,
-      chunk: chunkFileName
-    });
+    return NextResponse.json({ success: true, chunk: chunkFileName });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
