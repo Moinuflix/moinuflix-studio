@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MoinuFlix — National Media Catalog & Ingestion Portal</title>
+  <style>
+    :root {
+      --govt-blue: #0b3c75;
+      --govt-blue-dark: #072852;
+      --govt-blue-light: #e8f1fc;
+      --govt-accent: #1976d2;
+      --govt-orange: #d97706;
+      --govt-green: #15803d;
+      --govt-red: #b91c1c;
+      --bg-light: #f4f6fa;
+      --card-white: #ffffff;
+      --border-gray: #cbd5e1;
+      --border-dark: #94a3b8;
+      --text-dark: #0f172a;
+      --text-muted: #475569;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }
+
+    body {
+      background-color: var(--bg-light);
+      color: var(--text-dark);
+      padding: 1.25rem;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1250px;
+      margin: 0 auto;
+      background: var(--card-white);
+      border: 2px solid var(--govt-blue);
+      border-radius: 4px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+      overflow: hidden;
+    }
+
+    .govt-header {
+      background: linear-gradient(135deg, var(--govt-blue-dark), var(--govt-blue));
+      color: #ffffff;
+      padding: 1.25rem 2rem;
+      border-bottom: 4px solid var(--govt-orange);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .govt-title { font-size: 1.35rem; font-weight: 800; letter-spacing: 0.5px; }
+    .govt-sub { font-size: 0.82rem; color: #cbd5e1; margin-top: 3px; }
+    
+    .status-badge {
+      background: #ffffff;
+      color: var(--govt-blue);
+      padding: 0.4rem 0.9rem;
+      border-radius: 3px;
+      font-size: 0.78rem;
+      font-weight: 800;
+      border: 1px solid #94a3b8;
+    }
+
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      background: var(--govt-blue-light);
+      border-bottom: 1px solid var(--border-gray);
+      padding: 0.75rem 1.5rem;
+      gap: 1rem;
+    }
+
+    .stat-item { display: flex; flex-direction: column; }
+    .stat-label { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
+    .stat-val { font-size: 1.1rem; font-weight: 800; color: var(--govt-blue-dark); }
+
+    .form-wrapper { padding: 1.75rem; }
+    
+    .section-title {
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: var(--govt-blue);
+      text-transform: uppercase;
+      padding-bottom: 0.4rem;
+      border-bottom: 2px solid var(--govt-blue);
+      margin-top: 1.5rem;
+      margin-bottom: 1.2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .section-title:first-of-type { margin-top: 0; }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .col-12 { grid-column: span 12; }
+    .col-8 { grid-column: span 8; }
+    .col-6 { grid-column: span 6; }
+    .col-4 { grid-column: span 4; }
+    .col-3 { grid-column: span 3; }
+    .col-2 { grid-column: span 2; }
+
+    .form-group { display: flex; flex-direction: column; gap: 0.35rem; position: relative; }
+    label { font-size: 0.78rem; font-weight: 700; color: var(--text-dark); }
+    .required { color: var(--govt-red); }
+
+    input, select, textarea {
+      padding: 0.65rem 0.75rem;
+      border: 1px solid var(--border-dark);
+      border-radius: 3px;
+      font-size: 0.85rem;
+      color: var(--text-dark);
+      background-color: #ffffff;
+      outline: none;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--govt-accent);
+      box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
+    }
+
+    .smart-dash-preview {
+      background-color: #f8fafc;
+      border: 1px dashed var(--border-dark);
+      padding: 0.75rem 1rem;
+      font-family: monospace;
+      font-size: 0.82rem;
+      color: var(--govt-blue);
+      word-break: break-all;
+      border-radius: 3px;
+    }
+
+    /* DROPDOWN TMDB SEARCH */
+    .tmdb-results-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: #ffffff;
+      border: 2px solid var(--govt-blue);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+      border-radius: 3px;
+      z-index: 1000;
+      max-height: 280px;
+      overflow-y: auto;
+      display: none;
+    }
+    .tmdb-item-row {
+      display: flex;
+      gap: 12px;
+      padding: 8px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      cursor: pointer;
+      align-items: center;
+    }
+    .tmdb-item-row:hover { background-color: var(--govt-blue-light); }
+    .tmdb-item-row img { width: 36px; height: 50px; object-fit: cover; border-radius: 2px; }
+
+    /* CAST SECTION STYLING */
+    .cast-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 0.75rem;
+      background: #f8fafc;
+      border: 1px solid var(--border-gray);
+      padding: 1rem;
+      border-radius: 4px;
+      max-height: 380px;
+      overflow-y: auto;
+    }
+    .cast-card {
+      background: #ffffff;
+      border: 1px solid var(--border-gray);
+      border-radius: 4px;
+      padding: 6px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .cast-card img { width: 45px; height: 60px; object-fit: cover; border-radius: 3px; background: #e2e8f0; }
+    .cast-info { display: flex; flex-direction: column; overflow: hidden; }
+    .cast-name { font-size: 0.8rem; font-weight: 700; color: var(--govt-blue); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+    .cast-role { font-size: 0.72rem; color: var(--text-muted); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+    .cast-link { font-size: 0.68rem; color: var(--govt-accent); text-decoration: none; margin-top: 2px; }
+
+    /* ARTWORK CHECKLIST */
+    .artwork-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 0.75rem;
+      background: #fafafa;
+      padding: 1rem;
+      border: 1px solid var(--border-gray);
+      border-radius: 3px;
+    }
+    .art-item { font-size: 0.75rem; display: flex; flex-direction: column; gap: 0.2rem; }
+    .art-item span { font-weight: 700; color: var(--text-muted); }
+    .art-item input { font-size: 0.75rem; padding: 0.4rem; font-family: monospace; }
+
+    .button-row {
+      display: flex;
+      justify-content: flex-end;
+      gap: 1rem;
+      border-top: 1px solid var(--border-gray);
+      padding-top: 1.5rem;
+      margin-top: 1.5rem;
+    }
+
+    .btn {
+      padding: 0.75rem 1.6rem;
+      font-size: 0.85rem;
+      font-weight: 700;
+      border-radius: 3px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .btn-govt-primary { background-color: var(--govt-blue); color: #ffffff; }
+    .btn-govt-primary:hover { background-color: var(--govt-blue-dark); }
+    .btn-govt-secondary { background-color: #ffffff; color: var(--govt-blue); border-color: var(--govt-blue); }
+    .btn-govt-green { background-color: var(--govt-green); color: #ffffff; }
+    .btn-govt-green:hover { background-color: #166534; }
+
+    #toast-msg {
+      padding: 0.85rem 1.25rem;
+      margin-bottom: 1.25rem;
+      border-radius: 3px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      display: none;
+    }
+    .toast-success { background: #dcfce7; color: var(--govt-green); border: 1px solid #bbf7d0; }
+    .toast-error { background: #fee2e2; color: var(--govt-red); border: 1px solid #fecaca; }
+
+    @media (max-width: 850px) {
+      .col-8, .col-6, .col-4, .col-3, .col-2 { grid-column: span 12; }
+      .form-wrapper { padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="govt-header">
+    <div>
+      <div class="govt-title">MOINUFLIX NATIONAL MEDIA INGESTION PORTAL</div>
+      <div class="govt-sub">Govt-Style Form Verification & Two-Tier JSON Cataloging Engine</div>
+    </div>
+    <div class="status-badge" id="active-repo-badge">REPO: Moinuflix/My-Movies</div>
+  </div>
+
+  <div class="stats-bar">
+    <div class="stat-item">
+      <span class="stat-label">Catalog Total</span>
+      <span class="stat-val" id="stat-catalog-count">Loading...</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Target Chunk (50-Limit)</span>
+      <span class="stat-val" id="stat-target-chunk">chunk_01.json</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">System Architecture</span>
+      <span class="stat-val">Two-Tier JSON</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">PAT Token Status</span>
+      <span class="stat-val" id="pat-status-indicator" style="color:var(--govt-orange);">Checking...</span>
+    </div>
+  </div>
+
+  <div class="form-wrapper">
+    <div id="toast-msg"></div>
+
+    <form id="media-ingest-form" onsubmit="handleFormSubmission(event)">
+      
+      <!-- PART I: IDENTIFICATION & SEARCH -->
+      <div class="section-title">
+        <span>Part I: Digital Media Identification & Drive Allocation</span>
+        <button type="button" class="btn btn-govt-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.75rem;" onclick="configureToken()">⚙️ Set / Fix PAT Token</button>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group col-12">
+          <label>Raw Google Drive Release File Name <span class="required">*</span></label>
+          <input type="text" id="raw-filename" placeholder="Paste full raw filename with specs, e.g. Elysium (2013) 1080p BluRay..." required oninput="autoParseRawSpecs(this.value)">
+        </div>
+
+        <div class="form-group col-6">
+          <label>Google Drive File ID <span class="required">*</span></label>
+          <input type="text" id="drive-file-id" placeholder="e.g. 1weC0Qp05eEMwTb0Q17krWXGcM5SDFVV0" required>
+        </div>
+
+        <div class="form-group col-3">
+          <label>TMDb Movie ID <span class="required">*</span></label>
+          <input type="number" id="tmdb-id" placeholder="e.g. 68724" required oninput="fetchTmdbOfficialDetails(this.value)">
+        </div>
+
+        <div class="form-group col-3">
+          <label>Search Title for TMDb</label>
+          <input type="text" id="tmdb-search-input" placeholder="Type name for Top 5..." oninput="handleTmdbSearch(this.value)">
+          <div class="tmdb-results-dropdown" id="tmdb-dropdown"></div>
+        </div>
+
+        <div class="form-group col-12">
+          <label>Standard Kodi Dash Name Preview</label>
+          <div class="smart-dash-preview" id="dash-name-preview">Awaiting input...</div>
+        </div>
+      </div>
+
+      <!-- PART II: METADATA & CAST -->
+      <div class="section-title">
+        <span>Part II: Verified Metadata, Production & Top Cast</span>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group col-4">
+          <label>Official Title <span class="required">*</span></label>
+          <input type="text" id="movie-title" placeholder="Title" required oninput="updateDashPreview()">
+        </div>
+
+        <div class="form-group col-4">
+          <label>Original Title</label>
+          <input type="text" id="movie-orig-title" placeholder="Original Language Title">
+        </div>
+
+        <div class="form-group col-2">
+          <label>Release Year</label>
+          <input type="number" id="movie-year" value="2024" oninput="updateDashPreview()">
+        </div>
+
+        <div class="form-group col-2">
+          <label>TMDb Rating</label>
+          <input type="text" id="movie-rating" value="7.5">
+        </div>
+
+        <div class="form-group col-3">
+          <label>Original Language</label>
+          <input type="text" id="movie-lang" value="en">
+        </div>
+
+        <div class="form-group col-3">
+          <label>Runtime (Minutes)</label>
+          <input type="number" id="movie-runtime" value="120">
+        </div>
+
+        <div class="form-group col-3">
+          <label>CBFC Certification</label>
+          <select id="movie-cert">
+            <option value="U">U</option>
+            <option value="UA" selected>UA</option>
+            <option value="A">A</option>
+          </select>
+        </div>
+
+        <div class="form-group col-3">
+          <label>IMDb ID</label>
+          <input type="text" id="movie-imdb-id" placeholder="tt1535108">
+        </div>
+
+        <div class="form-group col-6">
+          <label>Director(s)</label>
+          <input type="text" id="movie-director" placeholder="Directors comma separated">
+        </div>
+
+        <div class="form-group col-6">
+          <label>Studio / Production Companies</label>
+          <input type="text" id="movie-studio" placeholder="Studios comma separated">
+        </div>
+
+        <div class="form-group col-12">
+          <label>Genres Array (Kodi Categories) <span class="required">*</span></label>
+          <input type="text" id="movie-genres" placeholder="Action, Science Fiction, Drama, Kids" value="Action, Science Fiction, Drama" required>
+        </div>
+
+        <div class="form-group col-12">
+          <label>Plot Synopsis</label>
+          <textarea id="movie-plot" rows="2" placeholder="Synopsis text..."></textarea>
+        </div>
+
+        <div class="form-group col-12">
+          <label>Official Trailer (YouTube)</label>
+          <div style="display:flex; gap:10px;">
+            <input type="text" id="movie-trailer" placeholder="https://www.youtube.com/watch?v=..." style="flex:1;">
+            <button type="button" class="btn btn-govt-secondary" style="padding:0.4rem 1rem;" onclick="testTrailer()">Play Trailer ↗</button>
+          </div>
+        </div>
+
+        <!-- TOP 10 CAST DISPLAY WITH PHOTOS -->
+        <div class="form-group col-12">
+          <label>Top 10 Cast with Photos & Profile Links</label>
+          <div class="cast-grid" id="cast-cards-container">
+            <div style="font-size:0.8rem; color:var(--text-muted); padding:10px;">No cast loaded. Enter TMDb ID to fetch cast.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PART III: TECHNICAL & EXPANDED OTT -->
+      <div class="section-title">
+        <span>Part III: Technical Attributes & Expanded OTT Video Sources</span>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group col-3">
+          <label>Resolution <span class="required">*</span></label>
+          <select id="tech-resolution" onchange="updateDashPreview()">
+            <option value="1080p" selected>1080p FHD</option>
+            <option value="2160p">2160p 4K UHD</option>
+            <option value="720p">720p HD</option>
+          </select>
+        </div>
+
+        <div class="form-group col-3">
+          <label>Video Source / OTT Platform</label>
+          <select id="tech-source" onchange="handleSourceChange(this.value)">
+            <option value="BluRay" selected>BluRay / REMUX</option>
+            <option value="WEB-DL">WEB-DL (Generic)</option>
+            <option value="AMZN">Amazon Prime Video</option>
+            <option value="Netflix">Netflix</option>
+            <option value="Hotstar">Disney+ Hotstar</option>
+            <option value="Sun NXT">Sun NXT</option>
+            <option value="JioCinema">JioCinema</option>
+            <option value="SonyLIV">SonyLIV</option>
+            <option value="Aha">Aha</option>
+            <option value="Zee5">Zee5</option>
+            <option value="Apple TV+">Apple TV+</option>
+          </select>
+        </div>
+
+        <div class="form-group col-3">
+          <label>Source Image Asset Path</label>
+          <input type="text" id="tech-source-image" value="resources/images/sources/bluray.png" readonly style="background-color: #f1f5f9;">
+        </div>
+
+        <div class="form-group col-3">
+          <label>Clean Rounded Size</label>
+          <input type="text" id="tech-filesize" value="5 GB" oninput="updateDashPreview()">
+        </div>
+
+        <div class="form-group col-12">
+          <label>Expanded Multi-Audio Specifications</label>
+          <input type="text" id="tech-audio-specs" value="Tamil 2.0 - 224Kbps + Telugu 2.0 - 224Kbps + Hindi 5.1 - 640Kbps + English 5.1 - 384Kbps" oninput="updateDashPreview()">
+        </div>
+      </div>
+
+      <!-- PART IV: 10-ARTWORK SUITE -->
+      <div class="section-title">
+        <span>Part IV: Complete 10-Artwork Verification Suite</span>
+      </div>
+
+      <div class="artwork-grid">
+        <div class="art-item">
+          <span>1. Poster (780w)</span>
+          <input type="text" id="art-poster" placeholder="Poster URL">
+        </div>
+        <div class="art-item">
+          <span>2. Fanart (Backdrop)</span>
+          <input type="text" id="art-fanart" placeholder="Backdrop URL">
+        </div>
+        <div class="art-item">
+          <span>3. ClearLogo (PNG)</span>
+          <input type="text" id="art-clearlogo" placeholder="ClearLogo URL">
+        </div>
+        <div class="art-item">
+          <span>4. ClearArt</span>
+          <input type="text" id="art-clearart" placeholder="ClearArt URL">
+        </div>
+        <div class="art-item">
+          <span>5. Wide Banner</span>
+          <input type="text" id="art-banner" placeholder="Banner URL">
+        </div>
+        <div class="art-item">
+          <span>6. Landscape (16:9)</span>
+          <input type="text" id="art-landscape" placeholder="Landscape URL">
+        </div>
+        <div class="art-item">
+          <span>7. KeyArt</span>
+          <input type="text" id="art-keyart" placeholder="KeyArt URL">
+        </div>
+        <div class="art-item">
+          <span>8. Thumbnail</span>
+          <input type="text" id="art-thumbnail" placeholder="Thumbnail URL">
+        </div>
+        <div class="art-item">
+          <span>9. DiscArt (CD Art)</span>
+          <input type="text" id="art-discart" placeholder="DiscArt URL">
+        </div>
+        <div class="art-item">
+          <span>10. Title Card</span>
+          <input type="text" id="art-titlecard" placeholder="Title Card URL">
+        </div>
+      </div>
+
+      <div class="button-row">
+        <button type="reset" class="btn btn-govt-secondary">Reset Form</button>
+        <button type="submit" id="btn-submit" class="btn btn-govt-green">🚀 Commit Record to GitHub (catalog & target chunk)</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  const TMDB_KEY = "051ccf72e026820cb53b8b8531b6a2ba";
+  const FANART_KEY = "b207628faa5a1fc82f7dc07575c224f7";
+  const GH_REPO = "Moinuflix/My-Movies";
+  const GH_BRANCH = "main";
+  const WORKER_BASE = "https://gdrive-stream.moinudeentv.workers.dev/?id=";
+  const USER_AGENT = "|User-Agent=Kodi-MoinuTV-PrivatePlayer/1.0";
+
+  let catalogCount = 0;
+  let currentTargetChunk = "chunk_01.json";
+  let loadedCastArray = [];
+
+  function getToken() { return (localStorage.getItem("moinuflix_gh_token") || "").trim(); }
+
+  function configureToken() {
+    const cur = getToken();
+    const input = prompt("Enter your GitHub Personal Access Token (starts with ghp_ or github_pat_):", cur);
+    if (input !== null) {
+      localStorage.setItem("moinuflix_gh_token", input.trim());
+      checkTokenStatus();
+      showToast("Token updated! Verifying permissions...");
+    }
+  }
+
+  async function checkTokenStatus() {
+    const t = getToken();
+    const ind = document.getElementById("pat-status-indicator");
+    if (!t) {
+      ind.textContent = "❌ Missing Token";
+      ind.style.color = "var(--govt-red)";
+      return;
+    }
+    try {
+      const r = await fetch("https://api.github.com/user", {
+        headers: { "Authorization": `token ${t}` }
+      });
+      if (r.ok) {
+        const u = await r.json();
+        ind.textContent = `Active ✅ (${u.login})`;
+        ind.style.color = "var(--govt-green)";
+      } else {
+        ind.textContent = "❌ Bad Credentials";
+        ind.style.color = "var(--govt-red)";
+      }
+    } catch (_) {
+      ind.textContent = "Active (Offline Check)";
+      ind.style.color = "var(--govt-green)";
+    }
+  }
+
+  function showToast(msg, isError = false) {
+    const el = document.getElementById("toast-msg");
+    el.className = isError ? "toast-error" : "toast-success";
+    el.textContent = (isError ? "❌ " : "✅ ") + msg;
+    el.style.display = "block";
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setTimeout(() => { el.style.display = "none"; }, 6000);
+  }
+
+  async function loadInitialStats() {
+    checkTokenStatus();
+    try {
+      const res = await fetch(`https://raw.githubusercontent.com/${GH_REPO}/${GH_BRANCH}/resources/data/catalog.json?t=${Date.now()}`);
+      if (res.ok) {
+        const cat = await res.json();
+        const movies = cat.movies || [];
+        catalogCount = movies.length;
+        document.getElementById("stat-catalog-count").textContent = `${catalogCount} Movies`;
+        
+        const chunkNum = Math.floor(catalogCount / 50) + 1;
+        currentTargetChunk = `chunk_${String(chunkNum).padStart(2, '0')}.json`;
+        document.getElementById("stat-target-chunk").textContent = currentTargetChunk;
+      }
+    } catch (_) {
+      document.getElementById("stat-catalog-count").textContent = "Offline / New";
+    }
+  }
+
+  // Strict Filename Parser (Fixes 1080p vs 2160p mismatch)
+  function autoParseRawSpecs(raw) {
+    if (!raw.trim()) return;
+
+    // 1. Resolution Check
+    const resSel = document.getElementById("tech-resolution");
+    if (/\b(2160p|4k|uhd)\b/i.test(raw)) {
+      resSel.value = "2160p";
+    } else if (/\b(720p)\b/i.test(raw)) {
+      resSel.value = "720p";
+    } else {
+      resSel.value = "1080p";
+    }
+
+    // 2. Clean Size Rounding
+    let sz = "5 GB";
+    const sm = raw.match(/(\d+\.?\d*)\s*(gb|mb)/i);
+    if (sm) {
+      let num = parseFloat(sm[1]);
+      if (/mb/i.test(sm[0])) num = num / 1024;
+      sz = `${Math.round(num)} GB`;
+    }
+    document.getElementById("tech-filesize").value = sz;
+
+    // 3. Source Selection
+    const srcSel = document.getElementById("tech-source");
+    if (/sun\s*nxt|sunnxt/i.test(raw)) handleSourceChange("Sun NXT");
+    else if (/amzn|prime/i.test(raw)) handleSourceChange("AMZN");
+    else if (/nf|netflix/i.test(raw)) handleSourceChange("Netflix");
+    else if (/hotstar|dsnp/i.test(raw)) handleSourceChange("Hotstar");
+    else if (/sonyliv/i.test(raw)) handleSourceChange("SonyLIV");
+    else if (/jio/i.test(raw)) handleSourceChange("JioCinema");
+    else if (/aha/i.test(raw)) handleSourceChange("Aha");
+    else if (/zee5/i.test(raw)) handleSourceChange("Zee5");
+    else if (/bluray|remux/i.test(raw)) handleSourceChange("BluRay");
+    else handleSourceChange("WEB-DL");
+
+    updateDashPreview();
+  }
+
+  function handleSourceChange(val) {
+    document.getElementById("tech-source").value = val;
+    const imgEl = document.getElementById("tech-source-image");
+    const map = {
+      "BluRay": "resources/images/sources/bluray.png",
+      "AMZN": "resources/images/sources/amazon.png",
+      "Netflix": "resources/images/sources/netflix.png",
+      "Hotstar": "resources/images/sources/hotstar.png",
+      "Sun NXT": "resources/images/sources/sunnxt.png",
+      "JioCinema": "resources/images/sources/jiocinema.png",
+      "SonyLIV": "resources/images/sources/sonyliv.png",
+      "Aha": "resources/images/sources/aha.png",
+      "Zee5": "resources/images/sources/zee5.png",
+      "Apple TV+": "resources/images/sources/appletv.png",
+      "WEB-DL": "resources/images/sources/web.png"
+    };
+    imgEl.value = map[val] || "resources/images/sources/web.png";
+    updateDashPreview();
+  }
+
+  function updateDashPreview() {
+    const title = document.getElementById("movie-title").value || "Title";
+    const year = document.getElementById("movie-year").value || "2024";
+    const res = document.getElementById("tech-resolution").value;
+    const src = document.getElementById("tech-source").value;
+    const audio = document.getElementById("tech-audio-specs").value;
+    const sz = document.getElementById("tech-filesize").value;
+
+    document.getElementById("dash-name-preview").textContent = 
+      `${title} (${year}) [${res}] [${src}] [${audio}] [${sz}].mkv`;
+  }
+
+  // TOP 5 TMDb Search Dropdown
+  let searchTimer = null;
+  function handleTmdbSearch(val) {
+    clearTimeout(searchTimer);
+    const box = document.getElementById("tmdb-dropdown");
+    if (!val || val.trim().length < 2) {
+      box.style.display = "none";
+      return;
+    }
+    searchTimer = setTimeout(async () => {
+      try {
+        const r = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(val)}`);
+        const d = await r.json();
+        const top5 = (d.results || []).slice(0, 5);
+        if (top5.length === 0) {
+          box.style.display = "none";
+          return;
+        }
+        box.innerHTML = "";
+        top5.forEach(m => {
+          const row = document.createElement("div");
+          row.className = "tmdb-item-row";
+          const p = m.poster_path ? `https://image.tmdb.org/t/p/w92${m.poster_path}` : "https://via.placeholder.com/36x50?text=No";
+          const yr = (m.release_date || "").split("-")[0];
+          row.innerHTML = `
+            <img src="${p}" alt="">
+            <div>
+              <div style="font-weight:700; font-size:0.82rem; color:var(--govt-blue);">${m.title} (${yr})</div>
+              <div style="font-size:0.72rem; color:var(--text-muted);">TMDb ID: ${m.id} • Rating: ★ ${m.vote_average}</div>
+            </div>
+          `;
+          row.onclick = () => {
+            document.getElementById("tmdb-id").value = m.id;
+            box.style.display = "none";
+            fetchTmdbOfficialDetails(m.id);
+          };
+          box.appendChild(row);
+        });
+        box.style.display = "block";
+      } catch (_) {}
+    }, 300);
+  }
+
+  // Fetch Full TMDb + Cast with Photos & Profile Links
+  async function fetchTmdbOfficialDetails(id) {
+    if (!id) return;
+    showToast("Fetching complete official metadata, credits and 10 artworks...");
+    try {
+      const res = await fetch(`https://api.themoviedb.org/3/movie/${id}?api_key=${TMDB_KEY}&language=en-US&append_to_response=credits,release_dates,videos,external_ids`);
+      if (!res.ok) throw new Error("Movie ID not found on TMDb");
+      const d = await res.json();
+
+      document.getElementById("movie-title").value = d.title || "";
+      document.getElementById("movie-orig-title").value = d.original_title || d.title || "";
+      document.getElementById("movie-year").value = (d.release_date || "2024").split("-")[0];
+      document.getElementById("movie-rating").value = d.vote_average ? d.vote_average.toFixed(1) : "7.5";
+      document.getElementById("movie-lang").value = d.original_language || "en";
+      document.getElementById("movie-runtime").value = d.runtime || 120;
+      document.getElementById("movie-plot").value = d.overview || "";
+      document.getElementById("movie-imdb-id").value = d.external_ids?.imdb_id || d.imdb_id || "";
+
+      // Directors & Studios
+      const directors = (d.credits?.crew || []).filter(c => c.job === "Director").map(c => c.name);
+      document.getElementById("movie-director").value = directors.join(", ");
+      document.getElementById("movie-studio").value = (d.production_companies || []).map(p => p.name).join(", ");
+
+      // Certification
+      const rels = d.release_dates?.results || [];
+      const inR = rels.find(r => r.iso_3166_1 === "IN") || rels.find(r => r.iso_3166_1 === "US");
+      if (inR && inR.release_dates?.[0]?.certification) {
+        document.getElementById("movie-cert").value = inR.release_dates[0].certification;
+      }
+
+      // Genres
+      const gList = (d.genres || []).map(g => g.name);
+      document.getElementById("movie-genres").value = gList.join(", ");
+
+      // Trailer
+      const videos = d.videos?.results || [];
+      const tr = videos.find(v => v.type === "Trailer" && v.site === "YouTube") || videos[0];
+      if (tr) document.getElementById("movie-trailer").value = `https://www.youtube.com/watch?v=${tr.key}`;
+
+      // TOP 10 CAST WITH PHOTOS & LINKS
+      const castWrap = document.getElementById("cast-cards-container");
+      castWrap.innerHTML = "";
+      loadedCastArray = [];
+      const top10 = (d.credits?.cast || []).slice(0, 10);
+      top10.forEach(c => {
+        const photo = c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : "https://via.placeholder.com/45x60?text=Actor";
+        const tmdbPersonUrl = `https://www.themoviedb.org/person/${c.id}`;
+        loadedCastArray.push({
+          name: c.name,
+          character: c.character,
+          profile: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null,
+          link: tmdbPersonUrl
+        });
+
+        const card = document.createElement("div");
+        card.className = "cast-card";
+        card.innerHTML = `
+          <img src="${photo}" alt="">
+          <div class="cast-info">
+            <span class="cast-name" title="${c.name}">${c.name}</span>
+            <span class="cast-role" title="${c.character || 'Role'}">${c.character || 'Role'}</span>
+            <a href="${tmdbPersonUrl}" target="_blank" class="cast-link">Profile ↗</a>
+          </div>
+        `;
+        castWrap.appendChild(card);
+      });
+
+      // 10 Artworks Fetch
+      if (d.poster_path) document.getElementById("art-poster").value = `https://image.tmdb.org/t/p/w780${d.poster_path}`;
+      if (d.backdrop_path) {
+        document.getElementById("art-fanart").value = `https://image.tmdb.org/t/p/original${d.backdrop_path}`;
+        document.getElementById("art-landscape").value = `https://image.tmdb.org/t/p/w780${d.backdrop_path}`;
+        document.getElementById("art-titlecard").value = `https://image.tmdb.org/t/p/original${d.backdrop_path}`;
+      }
+      if (d.poster_path) document.getElementById("art-thumbnail").value = `https://image.tmdb.org/t/p/w342${d.poster_path}`;
+
+      // Fanart.tv Fallback
+      try {
+        const faRes = await fetch(`https://webservice.fanart.tv/v3/movies/${id}?api_key=${FANART_KEY}`);
+        if (faRes.ok) {
+          const fa = await faRes.json();
+          const logo = fa.hdmovielogo?.[0]?.url || fa.movielogo?.[0]?.url;
+          if (logo) document.getElementById("art-clearlogo").value = logo;
+          if (fa.hdmovieclearart?.[0]?.url) document.getElementById("art-clearart").value = fa.hdmovieclearart[0].url;
+          if (fa.moviebanner?.[0]?.url) document.getElementById("art-banner").value = fa.moviebanner[0].url;
+          if (fa.moviethumb?.[0]?.url) document.getElementById("art-keyart").value = fa.moviethumb[0].url;
+          if (fa.moviedisc?.[0]?.url) document.getElementById("art-discart").value = fa.moviedisc[0].url;
+        }
+      } catch (_) {}
+
+      updateDashPreview();
+      showToast("Metadata, Top 10 Cast & Artworks successfully loaded!");
+    } catch (e) {
+      showToast(e.message, true);
+    }
+  }
+
+  function testTrailer() {
+    const tr = document.getElementById("movie-trailer").value;
+    if (tr) window.open(tr, "_blank");
+    else alert("Trailer link missing!");
+  }
+
+  // Final Two-Tier Commit to GitHub
+  async function handleFormSubmission(e) {
+    e.preventDefault();
+    const token = getToken();
+    if (!token) return alert("GitHub Token missing! Please click 'Set / Fix PAT Token' at top right.");
+
+    const driveId = document.getElementById("drive-file-id").value.trim();
+    const tmdbId = document.getElementById("tmdb-id").value.trim();
+    const title = document.getElementById("movie-title").value.trim();
+    const origTitle = document.getElementById("movie-orig-title").value.trim() || title;
+    const year = parseInt(document.getElementById("movie-year").value, 10) || 2024;
+    const rating = parseFloat(document.getElementById("movie-rating").value) || 7.5;
+    const lang = document.getElementById("movie-lang").value.trim();
+    const runtime = parseInt(document.getElementById("movie-runtime").value, 10) || 120;
+    const cert = document.getElementById("movie-cert").value;
+    const imdbId = document.getElementById("movie-imdb-id").value.trim();
+    const directors = document.getElementById("movie-director").value.split(",").map(x => ({ name: x.trim() })).filter(x => x.name);
+    const studios = document.getElementById("movie-studio").value.split(",").map(x => x.trim()).filter(Boolean);
+    const genres = document.getElementById("movie-genres").value.split(",").map(x => x.trim()).filter(Boolean);
+    const plot = document.getElementById("movie-plot").value;
+    const trailer = document.getElementById("movie-trailer").value;
+
+    const res = document.getElementById("tech-resolution").value;
+    const src = document.getElementById("tech-source").value;
+    const srcImg = document.getElementById("tech-source-image").value;
+    const sz = document.getElementById("tech-filesize").value;
+    const audio = document.getElementById("tech-audio-specs").value;
+    const dashName = document.getElementById("dash-name-preview").textContent;
+    const streamUrl = `${WORKER_BASE}${driveId}${USER_AGENT}`;
+
+    const artworkObj = {
+      poster: document.getElementById("art-poster").value,
+      fanart: document.getElementById("art-fanart").value,
+      clearlogo: document.getElementById("art-clearlogo").value,
+      clearart: document.getElementById("art-clearart").value,
+      banner: document.getElementById("art-banner").value,
+      landscape: document.getElementById("art-landscape").value,
+      keyart: document.getElementById("art-keyart").value,
+      thumbnail: document.getElementById("art-thumbnail").value,
+      discart: document.getElementById("art-discart").value,
+      title_card: document.getElementById("art-titlecard").value,
+      character_art: [],
+      extra_posters: [],
+      extra_backdrops: []
+    };
+
+    const targetChunkPath = `resources/data/chunks/${currentTargetChunk}`;
+    const catalogPath = `resources/data/catalog.json`;
+
+    document.getElementById("btn-submit").disabled = true;
+    document.getElementById("btn-submit").textContent = "Writing to GitHub...";
+
+    try {
+      // 1. Target Chunk File Commit
+      let chunkData = { chunk_id: currentTargetChunk.replace(".json", ""), movie_count: 0, movies: [] };
+      let chunkSha = undefined;
+
+      const cRes = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${targetChunkPath}?t=${Date.now()}`, {
+        headers: { "Authorization": `token ${token}` }
+      });
+      if (cRes.ok) {
+        const cJson = await cRes.json();
+        chunkSha = cJson.sha;
+        chunkData = JSON.parse(decodeURIComponent(escape(atob(cJson.content))));
+      }
+
+      const fullMovieRecord = {
+        id: driveId,
+        tmdb_id: parseInt(tmdbId, 10),
+        imdb_id: imdbId,
+        name: dashName,
+        title: title,
+        original_title: origTitle,
+        year: year,
+        runtime: runtime,
+        release_date: `${year}-01-01`,
+        certification: cert,
+        original_language: lang,
+        genres: genres,
+        tagline: "",
+        plot: plot,
+        country: ["India"],
+        studio: studios.length > 0 ? studios : [src],
+        director: directors,
+        writers: [],
+        cast: loadedCastArray,
+        artwork: artworkObj,
+        trailer: trailer,
+        ratings: [{ source: "TMDb", value: rating, out_of: 10 }],
+        badges: {
+          quality: `https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/resolution/${res}.png`,
+          hdr: "",
+          source: `https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/source/${src.toLowerCase().replace(/[^a-z]/g, '')}.png`,
+          audio_format: "https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/audio/dolbydigital.png",
+          audio_channels: "https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/audio/5.1.png"
+        },
+        specs: {
+          resolution: res,
+          source: src,
+          codec: "x264",
+          bit_depth: "8bit",
+          audio: audio,
+          channels: "5.1",
+          bitrate: "640 Kbps",
+          languages: "Multi",
+          size: sz
+        },
+        stream_url: streamUrl,
+        versions: [{
+          id: driveId,
+          name: dashName,
+          language: "Multi",
+          dubbed: audio,
+          quality: `${res} FHD`,
+          resolution: res,
+          source: src,
+          source_image: srcImg,
+          codec: "x264",
+          audio: audio,
+          channels: "5.1",
+          bitrate: "640 Kbps",
+          size: sz,
+          stream_url: streamUrl
+        }]
+      };
+
+      chunkData.movies = chunkData.movies || [];
+      chunkData.movies.push(fullMovieRecord);
+      chunkData.movie_count = chunkData.movies.length;
+
+      await commitDirectToGithub(targetChunkPath, chunkData, `Add ${title} to ${currentTargetChunk}`, chunkSha, token);
+
+      // 2. Catalog.json Commit
+      let catData = { movies: [] };
+      let catSha = undefined;
+
+      const catRes = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${catalogPath}?t=${Date.now()}`, {
+        headers: { "Authorization": `token ${token}` }
+      });
+      if (catRes.ok) {
+        const catJson = await catRes.json();
+        catSha = catJson.sha;
+        catData = JSON.parse(decodeURIComponent(escape(atob(catJson.content))));
+      }
+
+      const catalogEntry = {
+        id: driveId,
+        tmdb_id: parseInt(tmdbId, 10),
+        title: title,
+        year: year,
+        poster: artworkObj.poster,
+        fanart: artworkObj.fanart,
+        logo: artworkObj.clearlogo,
+        rating: rating,
+        original_language: lang,
+        genres: genres,
+        chunk_file: targetChunkPath,
+        primary_stream_url: streamUrl,
+        available_languages: ["Multi"],
+        version_count: 1,
+        available_versions: [{
+          language: "Multi",
+          dubbed: audio,
+          quality: `${res} FHD`,
+          source: src,
+          source_image: srcImg,
+          format: src,
+          codec: "x264",
+          audio: audio,
+          channels: "5.1"
+        }]
+      };
+
+      catData.movies = catData.movies || [];
+      catData.movies.push(catalogEntry);
+
+      await commitDirectToGithub(catalogPath, catData, `Update catalog.json for ${title}`, catSha, token);
+
+      showToast(`🎉 SUCCESS: Record successfully committed to ${currentTargetChunk} and catalog.json!`);
+      document.getElementById("media-ingest-form").reset();
+      document.getElementById("cast-cards-container").innerHTML = '<div style="font-size:0.8rem; color:var(--text-muted); padding:10px;">Awaiting next movie...</div>';
+      loadInitialStats();
+    } catch (err) {
+      showToast(`Save Failed: ${err.message}`, true);
+    }
+    document.getElementById("btn-submit").disabled = false;
+    document.getElementById("btn-submit").textContent = "🚀 Commit Record to GitHub (catalog & target chunk)";
+  }
+
+  async function commitDirectToGithub(path, data, msg, sha, token) {
+    const url = `https://api.github.com/repos/${GH_REPO}/contents/${path}`;
+    const jsonStr = JSON.stringify(data, null, 2);
+    const encoded = btoa(unescape(encodeURIComponent(jsonStr)));
+
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "Authorization": `token ${token}`,
+        "Accept": "application/vnd.github.v3+json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ message: msg, content: encoded, branch: GH_BRANCH, sha: sha })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || "GitHub API Error");
+    }
+  }
+
+  window.addEventListener("DOMContentLoaded", loadInitialStats);
+</script>
+</body>
+</html>
