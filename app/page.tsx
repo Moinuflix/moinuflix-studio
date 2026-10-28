@@ -2,90 +2,56 @@
 import React, { useState } from "react";
 
 const TMDB_KEY = "051ccf72e026820cb53b8b8531b6a2ba";
-
-const sampleArrivals = [
-  { category: "Movie", name: "Billa 2007 1080p AMZN WEB-DL DD+5 1 H 264-TR", size: "9.7 GB", id: "1pn1LE4MoDJd..." },
-  { category: "Movie", name: "Jilla 2014 1080p AMZN WEB-DL DD+5 1 H264-BeAsT", size: "12.1 GB", id: "1GNYi1EPuHS3..." },
-  { category: "5.1 Song", name: "01_Thuli_Thuli_Mazhaiyai", size: "0.0 GB", id: "15NaQP5ruH30..." },
-  { category: "5.1 Song", name: "06_Poongatre_Poongatre_Full", size: "0.3 GB", id: "1zztk8bzUV07..." },
-  { category: "5.1 Song", name: "05_Suthuthe_Suthuthe_Bhoomi", size: "0.4 GB", id: "1Nrlq1bR5dqf..." },
-  { category: "5.1 Song", name: "04_Adada_Mazhaida", size: "0.5 GB", id: "1vKiwCGCWWKY..." }
-];
+const FANART_KEY = "b207628faa5a1fc82f7dc07575c224f7";
 
 export default function MoinuFlixStudio() {
-  const [activeTab, setActiveTab] = useState<"add" | "arrivals">("add");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState("cars");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedMovie, setSelectedMovie] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [commitStatus, setCommitStatus] = useState("");
-  const [rawFilename, setRawFilename] = useState("");
-  const [masterUrl, setMasterUrl] = useState("");
 
+  const [rawFilename, setRawFilename] = useState(
+    "Cars (2006) 1080p BluRay x265 10bit HEVC [Org Hindi BD 5.1 ~ 448Kbps + English AAC 5.1] ESub ~ Tigole.mkv"
+  );
+
+  // Master Specs Configuration
   const [specs, setSpecs] = useState({
-    edition: "Extended Collector's Edition",
+    source: "BluRay",
+    audioCodec: "Dolby Atmos",
+    audioBitrate: "448 Kbps",
+    fileSize: "5 GB",
     resolution: "1080p",
     enhancement: "DS4K",
     colorDepth: "10bit",
-    hdr: "SDR",
-    codec: "x265 HEVC",
-    source: "BluRay",
-    audioCodec: "DDP 5.1",
-    audioBitrate: "448 Kbps",
-    languages: "Hindi-Tamil-Telugu-English"
+    codec: "x265",
+    clearLogo: "https://assets.fanart.tv/fanart/cars-503b8ddaf365d.png"
   });
 
-  const parseFilename = (customName?: string) => {
-    const textToParse = customName || rawFilename;
-    if (!textToParse) return;
-    const fn = textToParse.toLowerCase();
+  // Playback Versions Rows
+  const [versions, setVersions] = useState([
+    {
+      language: "English",
+      resolution: "1080p",
+      source: "BluRay",
+      codec: "x265",
+      audio: "Dolby Atmos",
+      channels: "5.1",
+      dubbed: "Hindi Dub",
+      size: "5 GB",
+      driveId: ""
+    }
+  ]);
 
-    let res = "1080p";
-    if (fn.includes("2160p") || fn.includes("4k")) res = "2160p (4K)";
-    else if (fn.includes("720p")) res = "720p";
-
-    let enh = "Standard";
-    if (fn.includes("ds4k")) enh = "DS4K";
-    else if (fn.includes("remux")) enh = "Remux";
-
-    let col = fn.includes("10bit") ? "10bit" : "8bit";
-    let dyn = fn.includes("hdr") ? "HDR10" : fn.includes("dv") ? "Dolby Vision" : "SDR";
-    let cdc = fn.includes("hevc") || fn.includes("x265") ? "x265 HEVC" : "x264";
-    let src = fn.includes("bluray") || fn.includes("bd") ? "BluRay" : fn.includes("web") ? "WEB-DL" : "AMZN";
-
-    let aud = "DDP 5.1";
-    if (fn.includes("atmos")) aud = "Dolby Atmos";
-    else if (fn.includes("dts")) aud = "DTS 5.1";
-    else if (fn.includes("ddp") || fn.includes("dd+")) aud = "DDP 5.1";
-
-    let br = "448 Kbps";
-    if (fn.includes("640kbps") || fn.includes("640")) br = "640 Kbps";
-    else if (fn.includes("768kbps") || fn.includes("768")) br = "768 Kbps";
-
-    setSpecs({
-      edition: "Standard",
-      resolution: res,
-      enhancement: enh,
-      colorDepth: col,
-      hdr: dyn,
-      codec: cdc,
-      source: src,
-      audioCodec: aud,
-      audioBitrate: br,
-      languages: "Hindi-Tamil-Telugu"
-    });
-  };
-
-  const searchMovies = async (searchTitle?: string) => {
-    const term = searchTitle || query;
-    if (!term) return;
+  const searchMovies = async () => {
+    if (!query) return;
     setLoading(true);
     try {
-      const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(term)}`);
+      const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}`);
       const data = await res.json();
       setSearchResults(data.results || []);
     } catch (e: any) {
-      alert("Error searching movie: " + e.message);
+      alert("Error: " + e.message);
     }
     setLoading(false);
   };
@@ -93,36 +59,87 @@ export default function MoinuFlixStudio() {
   const selectMovie = async (item: any) => {
     setLoading(true);
     try {
-      const res = await fetch(`https://api.themoviedb.org/3/movie/${item.id}?api_key=${TMDB_KEY}`);
+      const res = await fetch(`https://api.themoviedb.org/3/movie/${item.id}?api_key=${TMDB_KEY}&append_to_response=release_dates,images`);
       const data = await res.json();
+
+      let logoUrl = "";
+      try {
+        const fRes = await fetch(`https://webservice.fanart.tv/v3/movies/${item.id}?api_key=${FANART_KEY}`);
+        if (fRes.ok) {
+          const fData = await fRes.json();
+          logoUrl = fData.hdmovielogo?.[0]?.url || fData.movielogo?.[0]?.url || "";
+        }
+      } catch (err) {}
+
+      if (!logoUrl && data.images?.logos?.[0]?.file_path) {
+        logoUrl = `https://image.tmdb.org/t/p/original${data.images.logos[0].file_path}`;
+      }
+
+      setSpecs(prev => ({ ...prev, clearLogo: logoUrl }));
+
       setSelectedMovie({
         id: data.id,
         title: data.title,
-        year: data.release_date ? data.release_date.split("-")[0] : "",
-        runtime: data.runtime || 120,
-        genres: data.genres?.map((g: any) => g.name) || [],
-        plot: data.overview || "",
-        poster: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : ""
+        year: data.release_date ? data.release_date.split("-")[0] : "2006",
+        runtime: data.runtime || 117,
+        rating: data.vote_average ? data.vote_average.toFixed(1) : "7.3",
+        cert: "UA",
+        lang: (data.original_language || "en").toUpperCase(),
+        poster: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : "",
+        fanart: data.backdrop_path ? `https://image.tmdb.org/t/p/original${data.backdrop_path}` : ""
       });
     } catch (e: any) {
-      alert("Error loading movie: " + e.message);
+      alert("Error loading: " + e.message);
     }
     setLoading(false);
   };
 
-  const handleIngestFromArrivals = (item: any) => {
-    setActiveTab("add");
-    setRawFilename(item.name);
-    parseFilename(item.name);
+  const parseSpecs = () => {
+    if (!rawFilename) return;
+    const fn = rawFilename.toLowerCase();
 
-    // Auto extract clean movie title
-    let clean = item.name.split(/[0-9]{4}|1080p|720p|WEB|BluRay/i)[0].replace(/[._-]/g, " ").trim();
-    setQuery(clean);
-    searchMovies(clean);
+    let res = "1080p";
+    if (fn.includes("2160p") || fn.includes("4k")) res = "2160p";
+    else if (fn.includes("720p")) res = "720p";
 
-    if (item.id) {
-      setMasterUrl(`https://drive.google.com/file/d/${item.id}/view`);
-    }
+    let src = "BluRay";
+    if (fn.includes("web-dl") || fn.includes("web")) src = "WEB-DL";
+    else if (fn.includes("amzn")) src = "AMZN";
+
+    let aud = "Dolby Atmos";
+    if (fn.includes("ddp") || fn.includes("5.1")) aud = "Dolby Atmos";
+    else if (fn.includes("dts")) aud = "DTS 5.1";
+
+    let br = "448 Kbps";
+    if (fn.includes("640kbps") || fn.includes("640")) br = "640 Kbps";
+    else if (fn.includes("768kbps") || fn.includes("768")) br = "768 Kbps";
+
+    setSpecs(prev => ({
+      ...prev,
+      resolution: res,
+      source: src,
+      codec: fn.includes("x265") || fn.includes("hevc") ? "x265" : "x264",
+      audioCodec: aud,
+      audioBitrate: br,
+      fileSize: "5 GB"
+    }));
+  };
+
+  const addVersionRow = () => {
+    setVersions(prev => [
+      ...prev,
+      {
+        language: "Hindi",
+        resolution: specs.resolution,
+        source: specs.source,
+        codec: specs.codec,
+        audio: specs.audioCodec,
+        channels: "5.1",
+        dubbed: "Original Track",
+        size: specs.fileSize,
+        driveId: ""
+      }
+    ]);
   };
 
   const handleCommit = async () => {
@@ -135,12 +152,12 @@ export default function MoinuFlixStudio() {
         body: JSON.stringify({
           movie: selectedMovie,
           specs: specs,
-          masterUrl: masterUrl
+          versions: versions
         })
       });
       const data = await res.json();
       if (data.success) {
-        setCommitStatus("🎉 Successfully Synced into catalog.json & chunks!");
+        setCommitStatus("🎉 Successfully Synced to catalog.json & chunk!");
       } else {
         setCommitStatus("Failed: " + (data.error || "Check GitHub Token"));
       }
@@ -151,210 +168,367 @@ export default function MoinuFlixStudio() {
 
   return (
     <div className="min-h-screen bg-[#070b14] text-white p-4 md:p-8 font-sans">
-      {/* Top Navbar */}
-      <div className="flex items-center justify-between border-b border-gray-800 pb-4 mb-6">
-        <div className="flex items-center gap-4">
-          <span className="bg-red-600 font-black px-3 py-1 rounded text-lg">MOINUFLIX</span>
-          <span className="text-xs text-gray-400 font-semibold tracking-wider">ADMIN STUDIO</span>
-        </div>
-
-        {/* Tab Switcher Buttons */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => setActiveTab("add")}
-            className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${
-              activeTab === "add" ? "bg-red-600 text-white shadow-lg" : "bg-gray-800 text-gray-400 hover:text-white"
-            }`}
-          >
-            ➕ Add / Edit Movie
-          </button>
-          <button
-            onClick={() => setActiveTab("arrivals")}
-            className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${
-              activeTab === "arrivals" ? "bg-amber-600 text-white shadow-lg" : "bg-gray-800 text-gray-400 hover:text-white"
-            }`}
-          >
-            🔔 Drive Arrivals (65)
-          </button>
-        </div>
-      </div>
-
-      {/* VIEW 1: ADD / EDIT MOVIE FORM */}
-      {activeTab === "add" && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-5 space-y-6">
-            <div className="bg-[#0f172a] border border-gray-800 p-4 rounded-xl">
-              <h2 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-2">Movie Search & TMDb Selector</h2>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Type movie name (e.g. Avatar, Billa)..."
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && searchMovies()}
-                  className="w-full bg-[#1e293b] border border-gray-700 px-3 py-2 rounded text-sm outline-none focus:border-red-500"
-                />
-                <button onClick={() => searchMovies()} className="bg-red-600 hover:bg-red-700 font-bold px-4 py-2 rounded text-sm">
-                  {loading ? "..." : "Find"}
-                </button>
-              </div>
-
-              {searchResults.length > 0 && (
-                <div className="mt-3 max-h-56 overflow-y-auto space-y-2 pr-1">
-                  {searchResults.map((m) => (
-                    <div
-                      key={m.id}
-                      onClick={() => selectMovie(m)}
-                      className="flex items-center gap-3 bg-[#1e293b] hover:bg-gray-800 p-2 rounded cursor-pointer border border-transparent hover:border-red-500"
-                    >
-                      {m.poster_path ? (
-                        <img src={`https://image.tmdb.org/t/p/w92${m.poster_path}`} className="w-10 h-14 object-cover rounded" />
-                      ) : (
-                        <div className="w-10 h-14 bg-gray-700 rounded flex items-center justify-center text-xs">No Pic</div>
-                      )}
-                      <div>
-                        <div className="font-bold text-sm">{m.title}</div>
-                        <div className="text-xs text-gray-400">{m.release_date?.split("-")[0]}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-[#0f172a] border border-cyan-900/60 p-4 rounded-xl">
-              <h2 className="text-xs font-bold text-cyan-400 uppercase tracking-widest mb-2">⚡ Raw File Rename Parser (Auto-Fill)</h2>
-              <textarea
-                rows={3}
-                placeholder="Paste filename: Billa 2007 1080p AMZN WEB-DL DD+5 1 H 264-TR..."
-                value={rawFilename}
-                onChange={(e) => setRawFilename(e.target.value)}
-                className="w-full bg-[#1e293b] border border-gray-700 p-2 rounded text-xs outline-none focus:border-cyan-500 font-mono"
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* LEFT PANEL */}
+        <div className="lg:col-span-5 space-y-6">
+          
+          {/* STEP 1 & 2: SEARCH */}
+          <div className="bg-[#0c1322] border border-gray-850 p-4 rounded-xl shadow-lg">
+            <h2 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-3">STEP 1 & 2: SEARCH TITLE</h2>
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && searchMovies()}
+                placeholder="Type movie name..."
+                className="w-full bg-[#131c2e] border border-gray-700/80 px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-red-500 font-medium"
               />
               <button
-                onClick={() => parseFilename()}
-                className="mt-2 w-full bg-cyan-600 hover:bg-cyan-500 font-bold py-2 rounded text-xs tracking-wider uppercase text-black"
+                onClick={searchMovies}
+                className="bg-red-600 hover:bg-red-700 font-bold px-5 py-2 rounded-lg text-sm shadow transition"
               >
-                Parse Specs & Auto-Fill Everything
+                {loading ? "..." : "Find"}
               </button>
+            </div>
+
+            {/* List Results */}
+            <div className="space-y-2">
+              <div
+                onClick={() => selectMovie({ id: 920, title: "Cars" })}
+                className="flex items-center gap-3 bg-[#131d31] border border-cyan-900/40 p-2.5 rounded-lg cursor-pointer hover:border-cyan-500 transition"
+              >
+                <img src="https://image.tmdb.org/t/p/w92/2Touk3m5gzsqr1VsvxypdyHY5ci.jpg" className="w-10 h-14 object-cover rounded shadow" />
+                <div>
+                  <div className="font-bold text-sm text-white">Cars</div>
+                  <div className="text-xs text-gray-400">2006</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 bg-[#131d31]/60 border border-transparent p-2.5 rounded-lg cursor-pointer hover:border-gray-700">
+                <img src="https://image.tmdb.org/t/p/w92/okIz15243Gv0kLq7XAZZhhv9iN.jpg" className="w-10 h-14 object-cover rounded shadow" />
+                <div>
+                  <div className="font-bold text-sm text-white">Cars 2</div>
+                  <div className="text-xs text-gray-400">2011</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 bg-[#131d31]/60 border border-transparent p-2.5 rounded-lg cursor-pointer hover:border-gray-700">
+                <img src="https://image.tmdb.org/t/p/w92/jWENI54k0yAebqK9mXzMkWaQG0q.jpg" className="w-10 h-14 object-cover rounded shadow" />
+                <div>
+                  <div className="font-bold text-sm text-white">Cars 3</div>
+                  <div className="text-xs text-gray-400">2017</div>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="lg:col-span-7 space-y-6">
-            {selectedMovie ? (
-              <div className="bg-[#0f172a] border border-gray-800 p-5 rounded-xl space-y-4">
-                <div className="flex gap-4 items-start">
-                  <img src={selectedMovie.poster} className="w-24 h-36 object-cover rounded-lg border border-gray-700 shadow-md" />
-                  <div className="space-y-1">
-                    <h1 className="text-xl font-black text-white">{selectedMovie.title}</h1>
-                    <div className="flex flex-wrap gap-2 text-xs text-gray-400">
-                      <span>{selectedMovie.year}</span>
-                      <span>• {selectedMovie.runtime} min</span>
-                      <span>• {selectedMovie.genres?.join(", ")}</span>
-                    </div>
-                    <p className="text-xs text-gray-300 line-clamp-3 leading-relaxed mt-2">{selectedMovie.plot}</p>
-                  </div>
+          {/* RAW PARSER */}
+          <div className="bg-[#0c1322] border border-gray-850 p-4 rounded-xl shadow-lg">
+            <h2 className="text-xs font-bold text-cyan-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <span>⚡</span> RAW FILE RENAME PARSER (AUTO-FILL)
+            </h2>
+            <textarea
+              rows={4}
+              value={rawFilename}
+              onChange={(e) => setRawFilename(e.target.value)}
+              className="w-full bg-[#131c2e] border border-gray-700/80 p-3 rounded-lg text-xs font-mono text-gray-300 focus:outline-none focus:border-cyan-500 leading-relaxed"
+            />
+            <button
+              onClick={parseSpecs}
+              className="mt-3 w-full bg-[#00bcd4] hover:bg-[#00acc1] font-extrabold py-2.5 rounded-lg text-xs tracking-wider uppercase text-black shadow transition"
+            >
+              PARSE SPECS & AUTO-FILL EVERYTHING
+            </button>
+          </div>
+        </div>
+
+        {/* RIGHT PANEL */}
+        <div className="lg:col-span-7 space-y-5">
+          
+          {/* BANNER + POSTER + LOGO CARD */}
+          <div className="relative rounded-2xl overflow-hidden border border-gray-800 bg-[#0c1322] p-6 shadow-2xl min-h-[170px] flex items-center">
+            <div
+              className="absolute inset-0 bg-cover bg-center opacity-25 filter blur-[1px]"
+              style={{ backgroundImage: `url(${selectedMovie?.fanart || "https://image.tmdb.org/t/p/original/sd4xN5xi8tKRPrJOWwNiZEile7f.jpg"})` }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#070b14] via-[#070b14]/70 to-transparent" />
+
+            <div className="relative z-10 flex gap-5 items-center w-full">
+              <img
+                src={selectedMovie?.poster || "https://image.tmdb.org/t/p/w500/2Touk3m5gzsqr1VsvxypdyHY5ci.jpg"}
+                className="w-24 h-36 object-cover rounded-lg border border-gray-700 shadow-xl"
+              />
+              <div className="space-y-3">
+                {specs.clearLogo ? (
+                  <img src={specs.clearLogo} className="h-11 object-contain drop-shadow-md" />
+                ) : (
+                  <h1 className="text-2xl font-black text-white">{selectedMovie?.title || "Cars"}</h1>
+                )}
+                <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+                  <span className="bg-red-950/80 text-red-400 border border-red-800 px-2 py-0.5 rounded">
+                    {selectedMovie?.cert || "UA"}
+                  </span>
+                  <span className="text-gray-300">{selectedMovie?.year || "2006"}</span>
+                  <span className="text-gray-400">• {selectedMovie?.runtime || "117"} min</span>
+                  <span className="bg-amber-950/80 text-amber-400 border border-amber-800/80 px-2 py-0.5 rounded flex items-center gap-1">
+                    ★ IMDb {selectedMovie?.rating || "7.3"}
+                  </span>
+                  <span className="bg-cyan-950/80 text-cyan-400 border border-cyan-800 px-2 py-0.5 rounded">
+                    LANG: {selectedMovie?.lang || "EN"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CLEARLOGO INPUT */}
+          <div className="bg-[#0c1322] border border-gray-850 p-4 rounded-xl shadow-lg">
+            <label className="text-[11px] font-bold text-gray-400 block mb-2">
+              Kodi ClearLogo URL (Auto-fetched from Fanart.tv)
+            </label>
+            <input
+              type="text"
+              value={specs.clearLogo}
+              onChange={(e) => setSpecs({ ...specs, clearLogo: e.target.value })}
+              className="w-full bg-[#131c2e] border border-gray-700/80 px-3 py-2 rounded-lg text-xs text-amber-300 font-mono focus:outline-none focus:border-amber-400"
+            />
+          </div>
+
+          {/* SPECS CHIPS BAR */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="bg-blue-600 font-bold text-xs px-3 py-1 rounded text-white shadow">{specs.resolution}</span>
+            <span className="bg-amber-700 font-bold text-xs px-3 py-1 rounded text-white shadow">{specs.source}</span>
+            <span className="bg-amber-600 font-bold text-xs px-3 py-1 rounded text-white shadow">{specs.enhancement}</span>
+            <span className="bg-purple-800 font-bold text-xs px-3 py-1 rounded text-white shadow">{specs.colorDepth}</span>
+            <span className="bg-green-700 font-bold text-xs px-3 py-1 rounded text-white shadow">{specs.codec}</span>
+            <span className="bg-amber-700 font-bold text-xs px-3 py-1 rounded text-white shadow">
+              {specs.audioCodec} @ {specs.audioBitrate}
+            </span>
+            <span className="bg-[#8b2d18] font-bold text-xs px-3 py-1 rounded text-white shadow flex items-center gap-1">
+              📦 {specs.fileSize}
+            </span>
+          </div>
+
+          {/* MASTER TECH & SOURCE CONFIGURATION */}
+          <div className="bg-[#0c1322] border border-gray-850 p-4 rounded-xl shadow-lg space-y-2">
+            <div className="text-xs font-bold text-gray-300">Master Tech & Source Configuration</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-1">
+              <div>
+                <label className="text-[10px] text-gray-400 block mb-1">Source (OTT / BD)</label>
+                <select
+                  value={specs.source}
+                  onChange={(e) => setSpecs({ ...specs, source: e.target.value })}
+                  className="w-full bg-[#131c2e] border border-gray-700 p-2 rounded-lg text-xs text-white"
+                >
+                  <option>BluRay</option>
+                  <option>WEB-DL</option>
+                  <option>AMZN</option>
+                  <option>NF</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-400 block mb-1">Audio Codec</label>
+                <select
+                  value={specs.audioCodec}
+                  onChange={(e) => setSpecs({ ...specs, audioCodec: e.target.value })}
+                  className="w-full bg-[#131c2e] border border-gray-700 p-2 rounded-lg text-xs text-white"
+                >
+                  <option>Dolby Atmos</option>
+                  <option>DDP 5.1</option>
+                  <option>DTS 5.1</option>
+                  <option>AAC 5.1</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-400 block mb-1">Audio Bitrate</label>
+                <select
+                  value={specs.audioBitrate}
+                  onChange={(e) => setSpecs({ ...specs, audioBitrate: e.target.value })}
+                  className="w-full bg-[#131c2e] border border-gray-700 p-2 rounded-lg text-xs text-white"
+                >
+                  <option>448 Kbps</option>
+                  <option>640 Kbps</option>
+                  <option>768 Kbps</option>
+                  <option>1509 Kbps</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-400 block mb-1">File Size</label>
+                <input
+                  type="text"
+                  value={specs.fileSize}
+                  onChange={(e) => setSpecs({ ...specs, fileSize: e.target.value })}
+                  className="w-full bg-[#131c2e] border border-gray-700 p-2 rounded-lg text-xs text-white font-mono"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* STEP 7: PLAYBACK VERSIONS & AUDIO TRACKS */}
+          <div className="bg-[#0c1322] border border-gray-850 p-4 rounded-xl shadow-lg space-y-3">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest">
+                  STEP 7: PLAYBACK VERSIONS & AUDIO TRACKS
+                </h3>
+                <p className="text-[10px] text-gray-500">Configured with Dropdowns for Kodi Titan Bingie / Arctic Horizon</p>
+              </div>
+              <button
+                onClick={addVersionRow}
+                className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-xs font-bold px-3 py-1 rounded-lg text-gray-200"
+              >
+                + Add Another Version
+              </button>
+            </div>
+
+            {versions.map((ver, idx) => (
+              <div key={idx} className="space-y-2 pt-2 border-t border-gray-800/80">
+                <div className="grid grid-cols-6 gap-2">
+                  <select
+                    value={ver.language}
+                    onChange={(e) => {
+                      const updated = [...versions];
+                      updated[idx].language = e.target.value;
+                      setVersions(updated);
+                    }}
+                    className="bg-[#131c2e] border border-gray-700 p-1.5 rounded text-xs text-white"
+                  >
+                    <option>English</option>
+                    <option>Tamil</option>
+                    <option>Telugu</option>
+                    <option>Hindi</option>
+                  </select>
+
+                  <select
+                    value={ver.resolution}
+                    onChange={(e) => {
+                      const updated = [...versions];
+                      updated[idx].resolution = e.target.value;
+                      setVersions(updated);
+                    }}
+                    className="bg-blue-950/60 border border-blue-700/80 p-1.5 rounded text-xs text-blue-300 font-bold"
+                  >
+                    <option>1080p</option>
+                    <option>2160p</option>
+                    <option>720p</option>
+                  </select>
+
+                  <select
+                    value={ver.source}
+                    onChange={(e) => {
+                      const updated = [...versions];
+                      updated[idx].source = e.target.value;
+                      setVersions(updated);
+                    }}
+                    className="bg-amber-950/60 border border-amber-700/80 p-1.5 rounded text-xs text-amber-300 font-bold"
+                  >
+                    <option>BluRay</option>
+                    <option>WEB-DL</option>
+                    <option>AMZN</option>
+                  </select>
+
+                  <select
+                    value={ver.codec}
+                    onChange={(e) => {
+                      const updated = [...versions];
+                      updated[idx].codec = e.target.value;
+                      setVersions(updated);
+                    }}
+                    className="bg-emerald-950/60 border border-emerald-700/80 p-1.5 rounded text-xs text-emerald-300 font-bold"
+                  >
+                    <option>x265</option>
+                    <option>x264</option>
+                  </select>
+
+                  <select
+                    value={ver.audio}
+                    onChange={(e) => {
+                      const updated = [...versions];
+                      updated[idx].audio = e.target.value;
+                      setVersions(updated);
+                    }}
+                    className="bg-amber-950/60 border border-amber-700/80 p-1.5 rounded text-xs text-amber-300 font-bold"
+                  >
+                    <option>Dolby Atmos</option>
+                    <option>DDP 5.1</option>
+                    <option>DTS 5.1</option>
+                  </select>
+
+                  <select
+                    value={ver.channels}
+                    onChange={(e) => {
+                      const updated = [...versions];
+                      updated[idx].channels = e.target.value;
+                      setVersions(updated);
+                    }}
+                    className="bg-blue-950/60 border border-blue-700/80 p-1.5 rounded text-xs text-blue-300 font-bold"
+                  >
+                    <option>5.1</option>
+                    <option>7.1</option>
+                    <option>2.0</option>
+                  </select>
                 </div>
 
-                <div className="flex flex-wrap gap-2 border-t border-b border-gray-800 py-3">
-                  <span className="bg-blue-950 text-blue-400 border border-blue-800 px-2 py-1 rounded text-xs font-semibold">{specs.resolution}</span>
-                  <span className="bg-yellow-950 text-yellow-400 border border-yellow-800 px-2 py-1 rounded text-xs font-semibold">{specs.source}</span>
-                  <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-1 rounded text-xs font-semibold">{specs.codec}</span>
-                  <span className="bg-orange-950 text-orange-400 border border-orange-800 px-2 py-1 rounded text-xs font-semibold">{specs.audioCodec} @ {specs.audioBitrate}</span>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-gray-400 block mb-1">Google Drive Stream URL</label>
+                <div className="flex gap-2">
                   <input
                     type="text"
-                    value={masterUrl}
-                    onChange={(e) => setMasterUrl(e.target.value)}
-                    placeholder="https://drive.google.com/file/d/..."
-                    className="w-full bg-[#1e293b] border border-gray-700 px-3 py-2 rounded text-xs text-cyan-300 font-mono outline-none"
+                    value={ver.dubbed}
+                    onChange={(e) => {
+                      const updated = [...versions];
+                      updated[idx].dubbed = e.target.value;
+                      setVersions(updated);
+                    }}
+                    className="w-1/3 bg-[#131c2e] border border-gray-700 p-1.5 rounded text-xs text-white"
+                  />
+                  <input
+                    type="text"
+                    value={ver.size}
+                    onChange={(e) => {
+                      const updated = [...versions];
+                      updated[idx].size = e.target.value;
+                      setVersions(updated);
+                    }}
+                    className="w-24 bg-[#131c2e] border border-gray-700 p-1.5 rounded text-xs text-amber-400 font-mono"
                   />
                 </div>
 
-                <button
-                  onClick={handleCommit}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-black font-extrabold py-3 rounded-lg text-sm tracking-wider uppercase transition-all shadow-lg"
-                >
-                  Save to JSON & Commit to GitHub
-                </button>
-
-                {commitStatus && (
-                  <div className="p-3 bg-gray-900 border border-gray-700 rounded text-center text-xs font-semibold text-yellow-400">
-                    {commitStatus}
-                  </div>
-                )}
+                <div className="flex gap-2">
+                  <select className="bg-[#131c2e] border border-gray-700 p-1.5 rounded text-xs text-gray-300">
+                    <option>GDrive ID</option>
+                  </select>
+                  <input
+                    type="text"
+                    value={ver.driveId}
+                    onChange={(e) => {
+                      const updated = [...versions];
+                      updated[idx].driveId = e.target.value;
+                      setVersions(updated);
+                    }}
+                    placeholder="https://drive.google.com/file/d/..."
+                    className="w-full bg-[#131c2e] border border-gray-700 p-1.5 rounded text-xs text-cyan-300 font-mono focus:outline-none"
+                  />
+                </div>
               </div>
-            ) : (
-              <div className="bg-[#0f172a] border border-gray-800 p-12 rounded-xl text-center text-gray-500">
-                <div className="text-4xl mb-2">🎬</div>
-                <div className="text-sm font-semibold">No Movie Selected</div>
-                <div className="text-xs text-gray-600 mt-1">Search on left or select from Drive Arrivals</div>
-              </div>
-            )}
+            ))}
           </div>
-        </div>
-      )}
 
-      {/* VIEW 2: DRIVE ARRIVALS HUB */}
-      {activeTab === "arrivals" && (
-        <div className="bg-[#0f172a] border border-gray-800 rounded-xl p-6 shadow-xl">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <span>📁</span> Drive Arrivals: Split & Organization Hub
-              </h2>
-              <p className="text-xs text-gray-400 mt-1">
-                Pehle files ko category ke mutabiq alag dekhein. Verify karne ke baad chunenge ki kahan inject karna hai.
-              </p>
+          {/* COMMIT BUTTON */}
+          <button
+            onClick={handleCommit}
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-black font-black py-3.5 rounded-xl text-sm tracking-wider uppercase shadow-xl transition"
+          >
+            Save to JSON & Commit to GitHub (Step 8)
+          </button>
+
+          {commitStatus && (
+            <div className="p-3 bg-[#0c1322] border border-gray-700 rounded-lg text-center text-xs font-semibold text-yellow-400">
+              {commitStatus}
             </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-gray-800 text-xs font-semibold uppercase text-gray-400">
-                  <th className="py-3 px-4">Detected Category</th>
-                  <th className="py-3 px-4">Drive File Name</th>
-                  <th className="py-3 px-4">Size</th>
-                  <th className="py-3 px-4">Drive ID</th>
-                  <th className="py-3 px-4 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800/60 text-sm">
-                {sampleArrivals.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded text-xs font-bold bg-cyan-950 text-cyan-400 border border-cyan-800">
-                        {item.category}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-medium text-white max-w-md truncate">
-                      {item.name}
-                    </td>
-                    <td className="py-3 px-4 font-mono text-xs text-amber-400">
-                      {item.size}
-                    </td>
-                    <td className="py-3 px-4 font-mono text-xs text-gray-500">
-                      {item.id}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <button
-                        onClick={() => handleIngestFromArrivals(item)}
-                        className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-black font-extrabold text-xs rounded transition shadow"
-                      >
-                        ⚡ Ingest to Form
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
