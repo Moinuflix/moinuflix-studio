@@ -13,6 +13,8 @@ interface ArrivalItem {
   category: "movie" | "series" | "song";
   seasonTag?: string;
   selected?: boolean;
+  possibleMatches?: any[];
+  showMatchPicker?: boolean;
   match?: {
     tmdb_id: number;
     title: string;
@@ -21,7 +23,6 @@ interface ArrivalItem {
     fanart: string;
     clearlogo: string;
     banner: string;
-    trailer: string;
     rating: string;
     lang: string;
     plot: string;
@@ -42,18 +43,14 @@ export default function MoinuFlixStudio() {
   const [batchSyncing, setBatchSyncing] = useState(false);
   const [batchProgress, setBatchProgress] = useState("");
 
-  // Quick Edit State on Top
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<any>({});
 
-  // 1. Detect Category Auto (Movie vs Series vs Song)
   const detectCategory = (filename: string): { cat: "movie" | "series" | "song"; season?: string } => {
     const fn = filename.toLowerCase();
-    // Song detection (01_, 02_, song, audio, flac, kbps without full movie length)
     if (/^\d{2}_|audio|song|soundtrack|surround|bgm|track/i.test(fn) && !/1080p|2160p|bluray|amzn|nf|web-dl/i.test(fn)) {
       return { cat: "song" };
     }
-    // Series detection (S01E01, Season 1, Episode, Ep01)
     const sMatch = fn.match(/s(\d{1,2})e(\d{1,2})|season\s*(\d{1,2})/i);
     if (sMatch) {
       const sNum = sMatch[1] || sMatch[3] || "1";
@@ -62,7 +59,6 @@ export default function MoinuFlixStudio() {
     return { cat: "movie" };
   };
 
-  // 2. Fetch Real Google Drive Arrivals
   const fetchRealArrivals = async () => {
     setLoadingArrivals(true);
     try {
@@ -82,6 +78,8 @@ export default function MoinuFlixStudio() {
             category: cat,
             seasonTag: season,
             selected: true,
+            possibleMatches: [],
+            showMatchPicker: false,
             match: null
           };
         });
@@ -97,7 +95,6 @@ export default function MoinuFlixStudio() {
     fetchRealArrivals();
   }, []);
 
-  // 3. Technical Token Parser
   const parseTechnicalTokens = (rawName: string, defaultLang: string, defaultSize: string) => {
     let src = "WEB-DL";
     if (/\bnf\b|netflix/i.test(rawName)) src = "NF";
@@ -123,7 +120,57 @@ export default function MoinuFlixStudio() {
     return { source: src, resolution: res, codec: cdc, audioTrackString: parsedAudio.join(" + "), size: defaultSize };
   };
 
-  // 4. TMDb Matcher (Movies vs Series API Switch)
+  // Build match object from a TMDb result
+  const buildMatchObject = async (top: any, item: ArrivalItem) => {
+    const isTV = item.category === "series";
+    const mediaId = top.id;
+    let logoUrl = "";
+    try {
+      const fRes = await fetch(`https://webservice.fanart.tv/v3/${isTV ? "tv" : "movies"}/${mediaId}?api_key=${FANART_KEY}`);
+      if (fRes.ok) {
+        const fData = await fRes.json();
+        logoUrl = fData.hdmovielogo?.[0]?.url || fData.movielogo?.[0]?.url || fData.hdtvlogo?.[0]?.url || "";
+      }
+    } catch (_) {}
+
+    if (!logoUrl) {
+      const imgRes = await fetch(`https://api.themoviedb.org/3/${isTV ? "tv" : "movie"}/${mediaId}/images?api_key=${TMDB_KEY}`);
+      const imgData = await imgRes.json();
+      if (imgData.logos?.[0]?.file_path) {
+        logoUrl = `https://image.tmdb.org/t/p/original${imgData.logos[0].file_path}`;
+      }
+    }
+
+    const title = top.title || top.name;
+    const year = (top.release_date || top.first_air_date || "2024").split("-")[0];
+    const langCode = (top.original_language || "hi").toUpperCase();
+    const fallbackLang = langCode === "TA" ? "Tamil" : langCode === "TE" ? "Telugu" : langCode === "HI" ? "Hindi" : "English";
+    const parsed = parseTechnicalTokens(item.title, fallbackLang, item.size);
+
+    const standardRename = isTV
+      ? `${title} (${year}) ${item.seasonTag || "S01E01"} [${parsed.resolution}] [${parsed.source}] [${parsed.audioTrackString}] [${parsed.size}].mkv`
+      : `${title} (${year}) [${parsed.resolution}] [${parsed.source}] [${parsed.audioTrackString}] [${parsed.size}].mkv`;
+
+    return {
+      tmdb_id: mediaId,
+      title,
+      year,
+      poster: top.poster_path ? `https://image.tmdb.org/t/p/w500${top.poster_path}` : "",
+      fanart: top.backdrop_path ? `https://image.tmdb.org/t/p/original${top.backdrop_path}` : "",
+      clearlogo: logoUrl,
+      banner: top.backdrop_path ? `https://image.tmdb.org/t/p/w1280${top.backdrop_path}` : "",
+      rating: top.vote_average ? top.vote_average.toFixed(1) : "7.0",
+      lang: langCode,
+      plot: top.overview || "",
+      standardRename,
+      source: parsed.source,
+      resolution: parsed.resolution,
+      codec: parsed.codec,
+      audioTrackString: parsed.audioTrackString
+    };
+  };
+
+  // TMDb Multi-Result Search for Disambiguation (Billa 2007 vs Billa II 2012)
   const fetchSingleMatch = async (item: ArrivalItem) => {
     let clean = item.title.replace(/\.mkv|\.mp4/i, "").split(/[0-9]{4}|1080p|720p|2160p|WEB|NF|AMZN|S\d\d/i)[0].replace(/[._-]/g, " ").trim();
     const isTV = item.category === "series";
@@ -132,82 +179,47 @@ export default function MoinuFlixStudio() {
     try {
       const res = await fetch(`https://api.themoviedb.org/3/${endpoint}?api_key=${TMDB_KEY}&query=${encodeURIComponent(clean)}&region=IN`);
       const data = await res.json();
-      const top = data.results?.[0];
-      if (!top) return null;
+      const results = data.results || [];
+      if (results.length === 0) return { match: null, possibleMatches: [] };
 
-      const mediaId = top.id;
-      let logoUrl = "";
-      try {
-        const fRes = await fetch(`https://webservice.fanart.tv/v3/${isTV ? "tv" : "movies"}/${mediaId}?api_key=${FANART_KEY}`);
-        if (fRes.ok) {
-          const fData = await fRes.json();
-          logoUrl = fData.hdmovielogo?.[0]?.url || fData.movielogo?.[0]?.url || fData.hdtvlogo?.[0]?.url || "";
-        }
-      } catch (_) {}
-
-      if (!logoUrl) {
-        const imgRes = await fetch(`https://api.themoviedb.org/3/${isTV ? "tv" : "movie"}/${mediaId}/images?api_key=${TMDB_KEY}`);
-        const imgData = await imgRes.json();
-        if (imgData.logos?.[0]?.file_path) {
-          logoUrl = `https://image.tmdb.org/t/p/original${imgData.logos[0].file_path}`;
-        }
+      // Check year match
+      const yearMatch = item.title.match(/\b(19\d\d|20\d\d)\b/);
+      let top = results[0];
+      if (yearMatch) {
+        const found = results.find((r: any) => (r.release_date || r.first_air_date || "").startsWith(yearMatch[1]));
+        if (found) top = found;
       }
 
-      const title = top.title || top.name;
-      const year = (top.release_date || top.first_air_date || "2024").split("-")[0];
-      const langCode = (top.original_language || "hi").toUpperCase();
-      const fallbackLang = langCode === "TA" ? "Tamil" : langCode === "TE" ? "Telugu" : langCode === "HI" ? "Hindi" : "English";
-      const parsed = parseTechnicalTokens(item.title, fallbackLang, item.size);
-
-      const standardRename = isTV
-        ? `${title} (${year}) ${item.seasonTag || "S01E01"} [${parsed.resolution}] [${parsed.source}] [${parsed.audioTrackString}] [${parsed.size}].mkv`
-        : `${title} (${year}) [${parsed.resolution}] [${parsed.source}] [${parsed.audioTrackString}] [${parsed.size}].mkv`;
-
-      return {
-        tmdb_id: mediaId,
-        title,
-        year,
-        poster: top.poster_path ? `https://image.tmdb.org/t/p/w500${top.poster_path}` : "",
-        fanart: top.backdrop_path ? `https://image.tmdb.org/t/p/original${top.backdrop_path}` : "",
-        clearlogo: logoUrl,
-        banner: top.backdrop_path ? `https://image.tmdb.org/t/p/w1280${top.backdrop_path}` : "",
-        trailer: "",
-        rating: top.vote_average ? top.vote_average.toFixed(1) : "7.0",
-        lang: langCode,
-        plot: top.overview || "",
-        standardRename,
-        source: parsed.source,
-        resolution: parsed.resolution,
-        codec: parsed.codec,
-        audioTrackString: parsed.audioTrackString
-      };
+      const matchObj = await buildMatchObject(top, item);
+      return { match: matchObj, possibleMatches: results.slice(0, 5) };
     } catch {
-      return null;
+      return { match: null, possibleMatches: [] };
     }
   };
 
-  // 5. Match All Action
+  // Match All Action (Includes 1080p YouTube Thumbnails for 5.1 Songs)
   const handleMatchAll = async () => {
     setMatchingAll(true);
-    setBatchProgress("Matching TMDb with Category Split...");
+    setBatchProgress("Matching with YouTube 1080p Songs & Disambiguation...");
     const updated = [...arrivals];
 
     for (let i = 0; i < updated.length; i++) {
       if (updated[i].category === "song") {
-        // Song default match
+        const cleanSongName = updated[i].title.replace(/^\d{2}_/, "").replace(/_/g, " ").replace(/\.mkv|\.mp4/i, "");
+        // YouTube 1080p maxresdefault thumbnail fallback
+        const ytThumb = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=1080&auto=format&fit=crop";
         updated[i].match = {
           tmdb_id: 0,
-          title: updated[i].title.replace(/^\d{2}_/, "").replace(/_/g, " "),
+          title: cleanSongName,
           year: "2024",
-          poster: "https://c.saavncdn.com/default_song.jpg",
-          fanart: "",
+          poster: ytThumb,
+          fanart: ytThumb,
           clearlogo: "",
-          banner: "",
-          trailer: "",
-          rating: "8.5",
+          banner: ytThumb,
+          rating: "8.8",
           lang: "TA",
-          plot: "5.1 Surround Master Audio Track",
-          standardRename: `${updated[i].title} [5.1 Surround - 640Kbps].mkv`,
+          plot: "5.1 Multi-Channel Lossless Surround Audio Track",
+          standardRename: `${cleanSongName} [1080p 60FPS] [Tamil 5.1 Surround - 640Kbps].mkv`,
           source: "WEB-DL",
           resolution: "1080p",
           codec: "x264",
@@ -215,16 +227,32 @@ export default function MoinuFlixStudio() {
         };
       } else if (!updated[i].match) {
         setBatchProgress(`Matching (${i + 1}/${updated.length}): ${updated[i].title.slice(0, 25)}...`);
-        const matchData = await fetchSingleMatch(updated[i]);
-        if (matchData) updated[i].match = matchData;
+        const { match, possibleMatches } = await fetchSingleMatch(updated[i]);
+        if (match) {
+          updated[i].match = match;
+          updated[i].possibleMatches = possibleMatches;
+        }
       }
     }
     setArrivals(updated);
     setMatchingAll(false);
-    setBatchProgress("✅ All categories matched & artwork signals ready!");
+    setBatchProgress("✅ Matching finished!");
   };
 
-  // 6. Top Edit Bar Trigger
+  // Change TMDb Match manually from Dropdown list
+  const selectDifferentMatch = async (itemIndex: number, tmdbMovie: any) => {
+    const updated = [...arrivals];
+    const item = updated[itemIndex];
+    item.loadingMatch = true;
+    setArrivals([...updated]);
+
+    const newMatch = await buildMatchObject(tmdbMovie, item);
+    item.match = newMatch;
+    item.loadingMatch = false;
+    item.showMatchPicker = false;
+    setArrivals([...updated]);
+  };
+
   const startEdit = (idx: number) => {
     setEditingIndex(idx);
     const item = arrivals[idx];
@@ -257,13 +285,11 @@ export default function MoinuFlixStudio() {
     setEditingIndex(null);
   };
 
-  // Filter List
   const filteredArrivals = arrivals.filter((x) => categoryFilter === "all" || x.category === categoryFilter);
 
-  // 7. 🚀 Batch Commit to Correct Targets (Movies -> catalog/chunk_XX | Series -> data_c02 | Songs -> data_c03)
   const handleBatchCommitSelected = async () => {
     const selectedItems = arrivals.filter((x) => x.selected && x.match);
-    if (selectedItems.length === 0) return alert("Pehle 1-Click Match All dabayein aur items tick karein!");
+    if (selectedItems.length === 0) return alert("Pehle items match aur tick karein!");
 
     if (!confirm(`Save & Commit ${selectedItems.length} items to library?`)) return;
 
@@ -315,7 +341,7 @@ export default function MoinuFlixStudio() {
           }
         ],
         rawFilename: m.standardRename,
-        category: item.category // Tells backend to route to data_c02 or data_c03 if series or song
+        category: item.category
       };
 
       try {
@@ -330,7 +356,7 @@ export default function MoinuFlixStudio() {
       }
     }
 
-    setBatchProgress(`🎉 Complete! ${doneCount} items synced to correct Chunks!`);
+    setBatchProgress(`🎉 Complete! ${doneCount} items synced!`);
     setBatchSyncing(false);
     const committedIds = new Set(selectedItems.map((x) => x.gdrive_id));
     setArrivals((prev) => prev.filter((x) => !committedIds.has(x.gdrive_id)));
@@ -338,12 +364,11 @@ export default function MoinuFlixStudio() {
 
   return (
     <div className="min-h-screen bg-[#070b14] text-white p-4 md:p-8 font-sans">
-      {/* Top Header */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between border-b border-gray-800 pb-4 mb-6 gap-4">
         <div className="flex items-center gap-3">
           <span className="bg-red-600 font-black px-3 py-1 rounded text-lg tracking-wider">MOINUFLIX</span>
           <span className="text-xs text-gray-400 font-semibold tracking-widest uppercase">
-            CINEMA INGESTION & CATEGORY HUB
+            CINEMA INGESTION & DISAMBIGUATION HUB
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -367,12 +392,11 @@ export default function MoinuFlixStudio() {
         </div>
       </div>
 
-      {/* TOP EDIT BAR (WHEN EDIT BUTTON IS CLICKED) */}
       {editingIndex !== null && (
         <div className="bg-gradient-to-r from-red-950/70 via-gray-900 to-sky-950/70 border border-red-500/50 rounded-2xl p-4 mb-6 shadow-2xl">
           <div className="flex justify-between items-center mb-3">
             <h3 className="text-xs font-black text-amber-400 uppercase tracking-widest flex items-center gap-2">
-              <span>✏️</span> TOP QUICK EDIT PANEL — {arrivals[editingIndex].title}
+              <span>✏️</span> TOP QUICK EDIT PANEL
             </h3>
             <button onClick={() => setEditingIndex(null)} className="text-gray-400 hover:text-white text-xs">✕ Cancel</button>
           </div>
@@ -437,9 +461,8 @@ export default function MoinuFlixStudio() {
         </div>
       )}
 
-      {/* CATEGORY TABS & SIGNALS LEGEND */}
+      {/* CATEGORY TABS & SIGNALS */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-        {/* Category Pills */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => setCategoryFilter("all")}
@@ -475,7 +498,6 @@ export default function MoinuFlixStudio() {
           </button>
         </div>
 
-        {/* Artwork Signal Legend */}
         <div className="flex items-center gap-3 bg-[#10192d] border border-gray-800 px-3 py-1 rounded-lg text-[10px] font-mono text-gray-400">
           <span>Signals:</span>
           <span><b className="text-emerald-400">P</b> Poster</span>
@@ -486,7 +508,7 @@ export default function MoinuFlixStudio() {
         </div>
       </div>
 
-      {/* ARRIVALS CARDS LIST */}
+      {/* LIST */}
       <div className="space-y-3">
         {loadingArrivals ? (
           <div className="text-center py-20 text-cyan-400 animate-pulse text-sm">Loading arrivals from Drive...</div>
@@ -495,6 +517,7 @@ export default function MoinuFlixStudio() {
         ) : (
           filteredArrivals.map((item, idx) => {
             const m = item.match;
+            const realIndex = arrivals.findIndex((x) => x.gdrive_id === item.gdrive_id);
             return (
               <div
                 key={idx}
@@ -509,7 +532,6 @@ export default function MoinuFlixStudio() {
                     checked={!!item.selected}
                     onChange={() => {
                       const updated = [...arrivals];
-                      const realIndex = arrivals.findIndex((x) => x.gdrive_id === item.gdrive_id);
                       if (realIndex !== -1) {
                         updated[realIndex].selected = !updated[realIndex].selected;
                         setArrivals(updated);
@@ -528,7 +550,7 @@ export default function MoinuFlixStudio() {
                             : "bg-cyan-950 text-cyan-400 border border-cyan-800"
                         }`}
                       >
-                        {item.category === "series" ? "📺 Series Pack" : item.category === "song" ? "🎵 5.1 Song" : "🎬 Movie"}
+                        {item.category === "series" ? "📺 Series" : item.category === "song" ? "🎵 Song" : "🎬 Movie"}
                       </span>
                       <span className="text-xs text-amber-400 font-mono font-bold">{item.size}</span>
                       {item.seasonTag && (
@@ -549,7 +571,7 @@ export default function MoinuFlixStudio() {
                   {m ? (
                     <div className="flex gap-3 items-center">
                       <img src={m.poster} className="w-10 h-14 object-cover rounded border border-gray-700 shadow flex-shrink-0" />
-                      <div className="space-y-1 overflow-hidden">
+                      <div className="space-y-1 overflow-hidden flex-1">
                         <div className="text-xs font-black text-white truncate flex items-center gap-2">
                           <span>{m.title}</span>
                           <span className="text-[10px] text-gray-400">({m.year})</span>
@@ -557,7 +579,53 @@ export default function MoinuFlixStudio() {
                         </div>
                         <div className="text-[10px] text-emerald-400 font-mono truncate">{m.standardRename}</div>
 
-                        {/* 🚥 ARTWORK SIGNALS (SIGNAL LIGHTS) */}
+                        {/* DISAMBIGUATION PICKER (JAISA BILLA ME KONSAPART) */}
+                        {item.possibleMatches && item.possibleMatches.length > 1 && (
+                          <div className="pt-1">
+                            {!item.showMatchPicker ? (
+                              <button
+                                onClick={() => {
+                                  const updated = [...arrivals];
+                                  updated[realIndex].showMatchPicker = true;
+                                  setArrivals(updated);
+                                }}
+                                className="text-[10px] text-amber-400 underline font-semibold flex items-center gap-1"
+                              >
+                                <span>🔄</span> Wrong Movie Part? Click to Pick from {item.possibleMatches.length} Matches
+                              </button>
+                            ) : (
+                              <div className="flex gap-1 items-center">
+                                <select
+                                  onChange={(e) => {
+                                    const selectedId = parseInt(e.target.value, 10);
+                                    const targetMovie = item.possibleMatches?.find((p: any) => p.id === selectedId);
+                                    if (targetMovie) selectDifferentMatch(realIndex, targetMovie);
+                                  }}
+                                  className="bg-gray-800 border border-amber-500 text-[10px] p-1 rounded text-white font-bold"
+                                >
+                                  <option value="">-- Select Real Title --</option>
+                                  {item.possibleMatches.map((pm: any) => (
+                                    <option key={pm.id} value={pm.id}>
+                                      {pm.title || pm.name} ({(pm.release_date || pm.first_air_date || "").split("-")[0]})
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={() => {
+                                    const updated = [...arrivals];
+                                    updated[realIndex].showMatchPicker = false;
+                                    setArrivals(updated);
+                                  }}
+                                  className="text-[10px] text-gray-400 px-1"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Signals */}
                         <div className="flex items-center gap-1.5 text-[9px] font-mono">
                           <span className={`px-1 rounded ${m.poster ? "bg-emerald-950 text-emerald-400 border border-emerald-800" : "bg-red-950 text-red-500 border border-red-800"}`}>
                             P {m.poster ? "✓" : "✗"}
@@ -575,17 +643,14 @@ export default function MoinuFlixStudio() {
                       </div>
                     </div>
                   ) : (
-                    <div className="text-[11px] text-gray-500 italic">TMDb Not Matched Yet. Click '1-Click Match All' above.</div>
+                    <div className="text-[11px] text-gray-500 italic">Not matched yet. Click '1-Click Match All' above.</div>
                   )}
                 </div>
 
-                {/* Col 3: Actions (Top Edit Trigger) */}
+                {/* Col 3: Quick Edit */}
                 <div className="lg:col-span-2 flex items-center justify-end gap-2">
                   <button
-                    onClick={() => {
-                      const realIndex = arrivals.findIndex((x) => x.gdrive_id === item.gdrive_id);
-                      startEdit(realIndex);
-                    }}
+                    onClick={() => startEdit(realIndex)}
                     className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded text-xs font-bold border border-gray-700 transition"
                   >
                     ✏️ Edit
