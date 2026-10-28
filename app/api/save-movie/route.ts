@@ -1,218 +1,214 @@
 import { NextResponse } from "next/server";
-import { Octokit } from "@octokit/rest";
 
 export async function POST(req: Request) {
   try {
-    const { movieDetail, versions, primaryDriveUrl } = await req.json();
+    const { movie, specs, versions, rawFilename } = await req.json();
 
     const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-    const OWNER = process.env.GITHUB_REPO_OWNER || "Moinuflix";
-    const REPO = process.env.GITHUB_REPO_NAME || "My-Movies";
+    const REPO_OWNER = process.env.GITHUB_REPO_OWNER || "Moinuflix";
+    const REPO_NAME = process.env.GITHUB_REPO_NAME || "My-Movies";
     const WORKER_BASE = process.env.CLOUDFLARE_WORKER_BASE || "https://gdrive-stream.moinudeentv.workers.dev/?id=";
+    const USER_AGENT_TAG = "|User-Agent=Kodi-MoinuTV-PrivatePlayer/1.0";
 
     if (!GITHUB_TOKEN) {
-      return NextResponse.json({ error: "GITHUB_TOKEN not found in .env.local" }, { status: 500 });
+      return NextResponse.json({ error: "Missing GITHUB_TOKEN in env" }, { status: 500 });
     }
 
-    const octokit = new Octokit({ auth: GITHUB_TOKEN });
-
-    // Function to extract Google Drive file ID
-    const extractDriveId = (url: string) => {
-      const match = url.match(/[-\\w]{25,}/);
-      return match ? match[0] : url;
+    const headers = {
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
+      Accept: "application/vnd.github.v3+json",
+      "User-Agent": "MoinuFlix-Admin-Engine"
     };
 
-    const primaryStreamUrl = `${WORKER_BASE}${extractDriveId(primaryDriveUrl)}|User-Agent=Kodi-MoinuTV-PrivatePlayer/1.0`;
+    // 1. Fetch catalog.json
+    const catalogRes = await fetch(
+      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/catalog.json`,
+      { headers }
+    );
+    let catalogContent: any = { movies: [] };
+    let catalogSha: string | undefined;
 
-    // Map source to local Kodi source_image
-    const getSourceImage = (src: string) => {
-      const s = (src || "").toLowerCase();
-      if (s.includes("amzn") || s.includes("amazon")) return "resources/images/sources/amazon.png";
-      if (s.includes("nf") || s.includes("netflix")) return "resources/images/sources/netflix.png";
-      if (s.includes("dsnp") || s.includes("hotstar")) return "resources/images/sources/hotstar.png";
-      if (s.includes("zee")) return "resources/images/sources/zee5.png";
-      if (s.includes("sony")) return "resources/images/sources/sonyliv.png";
-      return "resources/images/sources/bluray.png";
-    };
+    if (catalogRes.ok) {
+      const catData = await catalogRes.json();
+      catalogSha = catData.sha;
+      const parsed = JSON.parse(Buffer.from(catData.content, "base64").toString("utf-8"));
+      catalogContent = Array.isArray(parsed) ? { movies: parsed } : (parsed.movies ? parsed : { movies: [] });
+    }
 
-    // Prepare processed available_versions for catalog.json & chunk
-    const processedVersions = (versions || []).map((v: any) => ({
-      language: v.language || "Tamil",
-      quality: v.quality || "1080p",
-      source: v.source || "AMZN",
-      source_image: getSourceImage(v.source),
-      format: v.format || "WEB-DL",
-      codec: v.codec || "x265",
-      audio: v.audio || "Dolby Atmos",
-      channels: v.channels || "5.1",
-      stream_url: v.drive_url ? `${WORKER_BASE}${extractDriveId(v.drive_url)}|User-Agent=Kodi-MoinuTV-PrivatePlayer/1.0` : primaryStreamUrl
+    // 2. Calculate Chunk File (50 Movies limit per chunk)
+    const totalMovies = catalogContent.movies.length;
+    const chunkNum = Math.floor(totalMovies / 50) + 1;
+    const chunkFileName = `chunks/chunk_${String(chunkNum).padStart(2, "0")}.json`;
+
+    // 3. Fetch or Create Target Chunk File
+    let chunkMovies: any[] = [];
+    let chunkSha: string | undefined;
+
+    const chunkRes = await fetch(
+      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${chunkFileName}`,
+      { headers }
+    );
+    if (chunkRes.ok) {
+      const chunkData = await chunkRes.json();
+      chunkSha = chunkData.sha;
+      const parsedChunk = JSON.parse(Buffer.from(chunkData.content, "base64").toString("utf-8"));
+      chunkMovies = parsedChunk.movies || [];
+    }
+
+    // Format versions with Cloudflare stream URLs
+    const formattedVersions = versions.map((v: any) => ({
+      id: v.driveId,
+      name: `${movie.title} (${movie.year}) [${v.resolution}] [${v.source}] [${v.language} ${v.channels} - ${specs.audioBitrate}] [${v.size}].mkv`,
+      language: v.language,
+      dubbed: v.dubbed || "Original Track",
+      quality: v.resolution,
+      resolution: v.resolution,
+      source: v.source,
+      codec: v.codec,
+      audio: v.audio,
+      channels: v.channels,
+      bitrate: specs.audioBitrate,
+      size: v.size,
+      stream_url: `${WORKER_BASE}${v.driveId}${USER_AGENT_TAG}`
     }));
 
-    // Unique Movie ID
-    const sanitizedTitle = movieDetail.title.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-    const movieId = `${sanitizedTitle}_${movieDetail.year}`;
+    const primaryStreamUrl = formattedVersions[0]?.stream_url || "";
 
-    // 1. Fetch or initialize catalog.json
-    let catalogSha = "";
-    let catalogData: any = { total_movies: 0, movies: [] };
-    try {
-      const { data } = await octokit.rest.repos.getContent({
-        owner: OWNER,
-        repo: REPO,
-        path: "catalog.json",
-      });
-      if (!Array.isArray(data) && data.type === "file") {
-        catalogSha = data.sha;
-        catalogData = JSON.parse(Buffer.from(data.content, "base64").toString());
-      }
-    } catch (e: any) {
-      if (e.status !== 404) throw e;
-    }
+    // Step 5: Full Detailed Movie Record (Heavy Tier 2)
+    const fullMovieDetail = {
+      id: String(movie.id),
+      tmdb_id: movie.id,
+      imdb_id: "tt" + String(movie.id),
+      name: rawFilename || formattedVersions[0]?.name || `${movie.title} (${movie.year}).mkv`,
+      title: movie.title, // Clean Kodi title
+      original_title: movie.title,
+      year: parseInt(movie.year, 10) || 2024,
+      runtime: movie.runtime || 120,
+      release_date: `${movie.year}-01-01`,
+      certification: movie.cert || "UA",
+      original_language: (movie.lang || "en").toLowerCase(),
+      genres: movie.genres || ["Action", "Drama"],
+      tagline: "",
+      plot: movie.plot || "",
+      country: ["India"],
+      studio: ["MoinuFlix Cinema"],
+      director: [{ name: "Director" }],
+      writers: [{ name: "Writer" }],
+      cast: [
+        {
+          name: "Lead Actor",
+          character: "Hero",
+          profile: null
+        }
+      ],
+      artwork: {
+        poster: movie.poster,
+        fanart: movie.fanart,
+        landscape: movie.fanart,
+        keyart: specs.clearLogo || movie.poster,
+        banner: movie.fanart,
+        clearlogo: specs.clearLogo,
+        clearart: null,
+        thumbnail: movie.poster,
+        title_card: movie.fanart,
+        intertitle: null,
+        chapter_cards: [],
+        character_art: [],
+        extra_posters: [],
+        extra_backdrops: []
+      },
+      trailer: "",
+      ratings: [
+        { source: "TMDb", value: parseFloat(movie.rating) || 7.0, out_of: 10 },
+        { source: "IMDb", value: parseFloat(movie.rating) || 7.0, out_of: 10 }
+      ],
+      badges: {
+        quality: `https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/resolution/${specs.resolution.toLowerCase().includes("2160") ? "2160p" : "1080p"}.png`,
+        hdr: "",
+        source: `https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/source/${specs.source.toLowerCase()}.png`,
+        audio_format: "https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/audio/atmos.png",
+        audio_channels: "https://raw.githubusercontent.com/jurialmunkey/skin.arctic.horizon.2/main/media/flags/audio/5.1.png"
+      },
+      specs: {
+        resolution: specs.resolution,
+        source: specs.source,
+        codec: specs.codec,
+        bit_depth: specs.colorDepth,
+        audio: specs.audioCodec,
+        channels: "5.1",
+        bitrate: specs.audioBitrate,
+        languages: Array.from(new Set(formattedVersions.map((v: any) => v.language))).join("-"),
+        size: specs.fileSize
+      },
+      stream_url: primaryStreamUrl,
+      versions: formattedVersions
+    };
 
-    // Determine Chunk File (50 movies per chunk)
-    const existingIndex = catalogData.movies.findIndex((m: any) => m.id === movieId);
-    let chunkFileName = "";
-    let chunkNumber = 1;
+    // Prevent duplicate entries in chunk
+    chunkMovies = chunkMovies.filter((m: any) => String(m.id) !== String(movie.id));
+    chunkMovies.push(fullMovieDetail);
 
-    if (existingIndex !== -1) {
-      chunkFileName = catalogData.movies[existingIndex].chunk_file;
-    } else {
-      chunkNumber = Math.floor(catalogData.movies.length / 50) + 1;
-      const pad = String(chunkNumber).padStart(2, "0");
-      chunkFileName = `chunks/chunk_${pad}.json`;
-    }
+    // Save Chunk file to GitHub
+    await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${chunkFileName}`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({
+        message: `Add ${movie.title} to ${chunkFileName}`,
+        content: Buffer.from(JSON.stringify({ movies: chunkMovies }, null, 2)).toString("base64"),
+        sha: chunkSha
+      })
+    });
 
-    // 2. Exact catalog item schema matching your plan
-    const catalogItem = {
-      id: movieId,
-      title: movieDetail.title,
-      year: movieDetail.year,
-      poster: movieDetail.artwork?.poster || "",
-      fanart: movieDetail.artwork?.fanart || "",
-      rating: movieDetail.ratings?.[0]?.value || 7.0,
-      original_language: movieDetail.original_language || "ta",
+    // Step 5: Lightweight Catalog Entry (Tier 1)
+    const catalogEntry = {
+      id: String(movie.id),
+      title: movie.title,
+      year: parseInt(movie.year, 10) || 2024,
+      poster: movie.poster,
+      fanart: movie.fanart,
+      logo: specs.clearLogo,
+      rating: parseFloat(movie.rating) || 7.0,
+      original_language: (movie.lang || "en").toLowerCase(),
+      genres: movie.genres || ["Action", "Drama"],
       chunk_file: chunkFileName,
       primary_stream_url: primaryStreamUrl,
-      available_languages: Array.from(new Set(processedVersions.map((v: any) => v.language))),
-      version_count: processedVersions.length,
-      available_versions: processedVersions.map((v: any) => ({
+      available_languages: Array.from(new Set(formattedVersions.map((v: any) => v.language))),
+      version_count: formattedVersions.length,
+      available_versions: formattedVersions.map((v: any) => ({
         language: v.language,
         quality: v.quality,
         source: v.source,
-        source_image: v.source_image,
-        format: v.format,
+        source_image: `resources/images/sources/${v.source.toLowerCase()}.png`,
+        format: v.source,
         codec: v.codec,
         audio: v.audio,
-        channels: v.channels
+        channels: v.channels,
+        bitrate: v.bitrate,
+        size: v.size
       }))
     };
 
-    if (existingIndex !== -1) {
-      catalogData.movies[existingIndex] = catalogItem;
-    } else {
-      catalogData.movies.unshift(catalogItem);
-      catalogData.total_movies = catalogData.movies.length;
-    }
+    // Prevent duplicate entries in catalog
+    catalogContent.movies = catalogContent.movies.filter((m: any) => String(m.id) !== String(movie.id));
+    catalogContent.movies.push(catalogEntry);
 
-    // 3. Exact chunk item schema matching your plan
-    const firstVer = processedVersions[0] || {};
-    const chunkMovieItem = {
-      id: movieId,
-      title: movieDetail.title,
-      original_title: movieDetail.original_title || movieDetail.title,
-      year: movieDetail.year,
-      tagline: movieDetail.tagline || "",
-      plot: movieDetail.plot || "",
-      runtime: movieDetail.runtime || 0,
-      release_date: movieDetail.release_date || "",
-      certification: movieDetail.certification || "UA",
-      original_language: movieDetail.original_language || "en",
-      genres: movieDetail.genres || [],
-      country: movieDetail.country || [],
-      studio: movieDetail.studio || [],
-      director: movieDetail.director || [],
-      writers: movieDetail.writers || [],
-      cast: movieDetail.cast || [],
-      artwork: movieDetail.artwork || {},
-      trailer: movieDetail.trailer || "",
-      external_ids: movieDetail.external_ids || {},
-      collection: movieDetail.collection || null,
-      similar_movies: [],
-      awards: movieDetail.awards || { summary: "" },
-      financials: movieDetail.financials || { box_office: "$0" },
-      ratings: movieDetail.ratings || [],
-      tags: {
-        quality: Array.from(new Set(processedVersions.map((v: any) => v.quality))),
-        source: Array.from(new Set(processedVersions.map((v: any) => v.source))),
-        codec: Array.from(new Set(processedVersions.map((v: any) => v.codec))),
-        hdr: ["HDR10", "SDR"],
-        audio: Array.from(new Set(processedVersions.map((v: any) => v.audio))),
-        other: ["MKV", "REMUX"],
-        language: Array.from(new Set(processedVersions.map((v: any) => v.language)))
-      },
-      specs: {
-        resolution: firstVer.quality || "1080p",
-        source: firstVer.source || "AMZN",
-        codec: firstVer.codec || "x265",
-        bit_depth: "10bit",
-        audio: firstVer.audio || "Dolby Atmos 5.1",
-        channels: firstVer.channels || "5.1",
-        languages: Array.from(new Set(processedVersions.map((v: any) => v.language))),
-        subtitles: ["MSubs"],
-        size: null
-      },
-      versions: processedVersions,
-      stream_url: primaryStreamUrl,
-      soundtrack: {}
-    };
-
-    // Fetch or initialize Chunk File
-    let chunkSha = "";
-    let chunkData: any = { movies: [] };
-    try {
-      const { data } = await octokit.rest.repos.getContent({
-        owner: OWNER,
-        repo: REPO,
-        path: chunkFileName,
-      });
-      if (!Array.isArray(data) && data.type === "file") {
-        chunkSha = data.sha;
-        chunkData = JSON.parse(Buffer.from(data.content, "base64").toString());
-      }
-    } catch (e: any) {
-      if (e.status !== 404) throw e;
-    }
-
-    const chunkMovieIndex = chunkData.movies.findIndex((m: any) => m.id === movieId);
-    if (chunkMovieIndex !== -1) {
-      chunkData.movies[chunkMovieIndex] = chunkMovieItem;
-    } else {
-      chunkData.movies.unshift(chunkMovieItem);
-    }
-
-    // 4. Commit Chunk File to GitHub
-    await octokit.rest.repos.createOrUpdateFileContents({
-      owner: OWNER,
-      repo: REPO,
-      path: chunkFileName,
-      message: `MoinuFlix Admin: Ingest ${movieDetail.title} (${movieDetail.year}) into ${chunkFileName}`,
-      content: Buffer.from(JSON.stringify(chunkData, null, 2)).toString("base64"),
-      sha: chunkSha || undefined,
+    // Save catalog.json to GitHub
+    await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/catalog.json`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({
+        message: `Update catalog.json with ${movie.title}`,
+        content: Buffer.from(JSON.stringify(catalogContent, null, 2)).toString("base64"),
+        sha: catalogSha
+      })
     });
 
-    // 5. Commit catalog.json to GitHub
-    await octokit.rest.repos.createOrUpdateFileContents({
-      owner: OWNER,
-      repo: REPO,
-      path: "catalog.json",
-      message: `MoinuFlix Admin: Update catalog.json for ${movieDetail.title}`,
-      content: Buffer.from(JSON.stringify(catalogData, null, 2)).toString("base64"),
-      sha: catalogSha || undefined,
+    return NextResponse.json({
+      success: true,
+      id: movie.id,
+      chunk: chunkFileName
     });
-
-    return NextResponse.json({ success: true, chunk: chunkFileName });
   } catch (error: any) {
-    console.error("Save Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
